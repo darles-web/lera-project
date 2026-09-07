@@ -51,57 +51,195 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Удаление фона: заливка от краёв по «белизне» пикселей               */
+  /* Удаление фона: авто-вырезание объекта от краёв картинки             */
   /* ------------------------------------------------------------------ */
-  function computeAlphaData(imgData, t1, t2) {
-    const data = imgData.data, w = imgData.width, h = imgData.height, n = w * h;
+  function estimateBgColors(data, w, h) {
+    const counts = new Map(), sums = new Map();
+    const push = (x, y) => {
+      const i = (y * w + x) * 4, r = data[i], g = data[i + 1], b = data[i + 2];
+      const q = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      counts.set(q, (counts.get(q) || 0) + 1);
+      const s = sums.get(q) || [0, 0, 0];
+      s[0] += r; s[1] += g; s[2] += b;
+      sums.set(q, s);
+    };
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+    for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+    return [...counts].map(([q, c]) => {
+      const s = sums.get(q);
+      return { r: Math.round(s[0] / c), g: Math.round(s[1] / c), b: Math.round(s[2] / c), c };
+    }).sort((a, b) => b.c - a.c).slice(0, 6);
+  }
 
-    /* «отклонение от белого» каждого пикселя: 0 = чистый белый */
-    const dev = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      const j = i * 4;
-      const d = Math.max(255 - data[j], 255 - data[j + 1], 255 - data[j + 2]);
-      dev[i] = d;
+  function minDist2ToBgs(r, g, b, bgs) {
+    let d2 = Infinity;
+    for (const c of bgs) {
+      const dr = r - c.r, dg = g - c.g, db = b - c.b;
+      const v = dr * dr + dg * dg + db * db;
+      if (v < d2) d2 = v;
     }
+    return d2;
+  }
+
+  function computeAlphaData(imgData, opts = {}) {
+    const data = imgData.data, w = imgData.width, h = imgData.height, n = w * h;
+    const t1 = opts.t1 ?? 24, t2 = opts.t2 ?? 55;
+    const t1sq = t1 * t1, t2sq = t2 * t2;
+    const doShadow = opts.shadow !== false;
+    const keepMain = opts.mainObject !== false;
+
+    const bgs = estimateBgColors(data, w, h);
+    const bg = bgs[0] || { r: 255, g: 255, b: 255 };
+    const bgLum = (bg.r + bg.g + bg.b) / 3;
+    const bgSat = Math.max(bg.r, bg.g, bg.b) - Math.min(bg.r, bg.g, bg.b);
+    const lightNeutralBg = bgLum > 150 && bgSat < 42;
 
     const alpha = new Uint8ClampedArray(n).fill(255);
     const visited = new Uint8Array(n);
-    const qx = new Int32Array(n);
+    const q = new Int32Array(n);
     let head = 0, tail = 0;
-    const push = i => { qx[tail++] = i; visited[i] = 1; };
 
-    /* стартуем со всех краевых пикселей, близких к белому */
-    for (let x = 0; x < w; x++) {
-      if (dev[x] <= t1) push(x);
-      const b = (h - 1) * w + x;
-      if (dev[b] <= t1) push(b);
-    }
-    for (let y = 0; y < h; y++) {
-      const l = y * w, r = l + w - 1;
-      if (dev[l] <= t1) push(l);
-      if (dev[r] <= t1) push(r);
-    }
-
-    const visit = k => {
-      if (visited[k]) return;
-      const d = dev[k];
-      if (d <= t1) push(k);                      /* фон — продолжаем заливку */
-      else if (d <= t2) {                        /* мягкий край — полупрозрачно */
-        visited[k] = 1;
-        alpha[k] = Math.round(255 * (d - t1) / (t2 - t1));
-      }
+    const shadowLike = i => {
+      if (!doShadow || !lightNeutralBg) return false;
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      const sat = Math.max(r, g, b) - Math.min(r, g, b);
+      const lum = (r + g + b) / 3;
+      return sat < 34 && lum > 150 && lum > bgLum - 90;
+    };
+    const softShadow = i => {
+      if (!doShadow || !lightNeutralBg) return false;
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      const sat = Math.max(r, g, b) - Math.min(r, g, b);
+      const lum = (r + g + b) / 3;
+      return sat < 42 && lum > 150 && lum > bgLum - 78;
     };
 
+    /* стартуем со всех краевых пикселей, похожих на фон */
+    const seed = i => {
+      if (visited[i]) return;
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      if (minDist2ToBgs(r, g, b, bgs) <= t1sq || shadowLike(i)) {
+        visited[i] = 1; alpha[i] = 0; q[tail++] = i;
+      } else if (minDist2ToBgs(r, g, b, bgs) <= t2sq || softShadow(i)) {
+        visited[i] = 1; alpha[i] = 70;
+      }
+    };
+    for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+
+    /* вырастаем фон от краёв: глобальная похожесть + плавность по соседству */
     while (head < tail) {
-      const i = qx[head++];
+      const i = q[head++];
       alpha[i] = 0;
       const x = i % w, y = (i - x) / w;
-      if (x > 0) visit(i - 1);
-      if (x < w - 1) visit(i + 1);
-      if (y > 0) visit(i - w);
-      if (y < h - 1) visit(i + w);
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+      const nbs = [];
+      if (x > 0) nbs.push(i - 1);
+      if (x < w - 1) nbs.push(i + 1);
+      if (y > 0) nbs.push(i - w);
+      if (y < h - 1) nbs.push(i + w);
+      for (const j of nbs) {
+        if (visited[j]) continue;
+        const nr = data[j * 4], ng = data[j * 4 + 1], nb = data[j * 4 + 2];
+        const localSq = (nr - r) * (nr - r) + (ng - g) * (ng - g) + (nb - b) * (nb - b);
+        const bgSq = minDist2ToBgs(nr, ng, nb, bgs);
+        if (bgSq <= t1sq || localSq <= t1sq || shadowLike(j)) {
+          visited[j] = 1; alpha[j] = 0; q[tail++] = j;
+        } else if (bgSq <= t2sq || localSq <= t2sq || softShadow(j)) {
+          visited[j] = 1; alpha[j] = 70;
+        } else {
+          visited[j] = 1; /* растение — оставляем непрозрачным */
+        }
+      }
     }
+
+    if (keepMain) keepMainComponent(alpha, w, h, n);
+    fillTinyHoles(alpha, w, h, n);
     return alpha;
+  }
+
+  /* Оставляем главный объект (растение + горшок), убираем осколки фона */
+  function keepMainComponent(alpha, w, h, n) {
+    const labels = new Int32Array(n).fill(-1);
+    const q = new Int32Array(n);
+    const comps = [];
+    let compId = 0;
+
+    for (let start = 0; start < n; start++) {
+      if (alpha[start] < 110 || labels[start] !== -1) continue;
+      let head = 0, tail = 0, size = 0;
+      let minx = w, miny = h, maxx = -1, maxy = -1;
+      q[tail++] = start; labels[start] = compId;
+      while (head < tail) {
+        const i = q[head++]; size++;
+        const x = i % w, y = (i - x) / w;
+        if (x < minx) minx = x; if (x > maxx) maxx = x;
+        if (y < miny) miny = y; if (y > maxy) maxy = y;
+        const nbs = [];
+        if (x > 0) nbs.push(i - 1);
+        if (x < w - 1) nbs.push(i + 1);
+        if (y > 0) nbs.push(i - w);
+        if (y < h - 1) nbs.push(i + w);
+        for (const j of nbs)
+          if (alpha[j] >= 110 && labels[j] === -1) { labels[j] = compId; q[tail++] = j; }
+      }
+      comps.push({ id: compId, size, minx, miny, maxx, maxy });
+      compId++;
+    }
+    if (!comps.length) return;
+
+    const main = comps.reduce((a, b) => (a.size >= b.size ? a : b));
+    const keep = new Uint8Array(compId); keep[main.id] = 1;
+    for (const c of comps) {
+      if (c.id === main.id || c.size < main.size * 0.02) continue;
+      const ox = Math.min(main.maxx, c.maxx) - Math.max(main.minx, c.minx);
+      const oy = Math.min(main.maxy, c.maxy) - Math.max(main.miny, c.miny);
+      if (ox < 0 || oy < 0) continue;
+      if ((ox + 1) * (oy + 1) / Math.min(main.size, c.size) >= 0.35) keep[c.id] = 1;
+    }
+
+    for (let i = 0; i < n; i++) {
+      if (alpha[i] >= 110) {
+        if (labels[i] !== -1 && !keep[labels[i]]) alpha[i] = 0;
+        continue;
+      }
+      if (alpha[i] === 0) continue;
+      const x = i % w, y = (i - x) / w;
+      let kept = false;
+      if (x > 0 && labels[i - 1] !== -1 && keep[labels[i - 1]]) kept = true;
+      else if (x < w - 1 && labels[i + 1] !== -1 && keep[labels[i + 1]]) kept = true;
+      else if (y > 0 && labels[i - w] !== -1 && keep[labels[i - w]]) kept = true;
+      else if (y < h - 1 && labels[i + w] !== -1 && keep[labels[i + w]]) kept = true;
+      if (!kept) alpha[i] = 0;
+    }
+  }
+
+  /* Заполняем только крошечные «дырки» внутри вырезанного объекта */
+  function fillTinyHoles(alpha, w, h, n) {
+    const maxArea = Math.max(12, Math.round(n * 0.0004));
+    const labels = new Int32Array(n).fill(-1);
+    const q = new Int32Array(n);
+    let compId = 0;
+    for (let start = 0; start < n; start++) {
+      if (alpha[start] >= 60 || labels[start] !== -1) continue;
+      let head = 0, tail = 0, size = 0, border = false;
+      q[tail++] = start; labels[start] = compId;
+      while (head < tail) {
+        const i = q[head++]; size++;
+        const x = i % w, y = (i - x) / w;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) border = true;
+        const nbs = [];
+        if (x > 0) nbs.push(i - 1);
+        if (x < w - 1) nbs.push(i + 1);
+        if (y > 0) nbs.push(i - w);
+        if (y < h - 1) nbs.push(i + w);
+        for (const j of nbs)
+          if (alpha[j] < 60 && labels[j] === -1) { labels[j] = compId; q[tail++] = j; }
+      }
+      if (!border && size <= maxArea)
+        for (let k = 0; k < tail; k++) alpha[q[k]] = 255;
+      compId++;
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -118,6 +256,8 @@
     bg: "mint",
     custom: "#f1f3f1",
     sens: 1,
+    shadow: true,       // убирать тени и осколки фона
+    mainObject: true,   // оставлять только растение с горшком
     scale: 1,           // 0.5–2
     rot: 0,             // -15..15
     dx: 0, dy: 0,
@@ -164,6 +304,14 @@
                 <select id="peSens" class="pe-select">
                   ${SENS.map((s, i) => `<option value="${i}">${s.label}</option>`).join("")}
                 </select>
+              </label>
+              <label class="pe-toggle">
+                <input type="checkbox" id="peShadow" checked>
+                Вырезать фигуру — убрать тени и лишний фон
+              </label>
+              <label class="pe-toggle">
+                <input type="checkbox" id="peMain" checked>
+                Оставить только растение с горшком
               </label>
             </div>
             <div class="pe-sec">
@@ -218,6 +366,14 @@
     });
     overlay.querySelector("#peSens").addEventListener("change", e => {
       state.sens = +e.target.value;
+      scheduleRender();
+    });
+    overlay.querySelector("#peShadow").addEventListener("change", e => {
+      state.shadow = e.target.checked;
+      scheduleRender();
+    });
+    overlay.querySelector("#peMain").addEventListener("change", e => {
+      state.mainObject = e.target.checked;
       scheduleRender();
     });
     overlay.querySelector("#peScale").addEventListener("input", e => {
@@ -286,6 +442,8 @@
   function syncAll() {
     overlay.querySelector("#peReplace").checked = state.replace;
     overlay.querySelector("#peSens").value = state.sens;
+    overlay.querySelector("#peShadow").checked = state.shadow !== false;
+    overlay.querySelector("#peMain").checked = state.mainObject !== false;
     overlay.querySelector("#peCustom").value = state.custom;
     syncSliders(); syncBgUI();
   }
@@ -307,12 +465,12 @@
   }
 
   function cutout() {
-    const key = state.sens + "@" + srcCanvas.width + "x" + srcCanvas.height;
+    const key = state.sens + "@" + (state.shadow !== false) + "@" + (state.mainObject !== false) + "@" + srcCanvas.width + "x" + srcCanvas.height;
     if (cutoutKey === key && cutoutCache) return cutoutCache;
     const { t1, t2 } = SENS[state.sens];
     const ictx = srcCanvas.getContext("2d");
     const img = ictx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
-    const alpha = computeAlphaData(img, t1, t2);
+    const alpha = computeAlphaData(img, { t1, t2, shadow: state.shadow !== false, mainObject: state.mainObject !== false });
     const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height);
     for (let i = 0; i < alpha.length; i++) out.data[i * 4 + 3] = alpha[i];
     const c = document.createElement("canvas");

@@ -19,13 +19,19 @@ let ghPush = false;        // есть ли право на запись
 let photos = [];           // [{ dataURL, name }] — dataURL уже обработанного фото
 let editingId = null;      // id растения, которое редактируем (или null)
 let drafts = loadDrafts();
+let recogCandidates = [];  // кандидаты автоопределения растения (без API)
+let recogPrev = null;      // снимок полей до офлайн-заполнения
 
 /* ------------------------------------------------------------------ */
 /* Утилиты                                                             */
 /* ------------------------------------------------------------------ */
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-/* money(), NO_PHOTO, prodImage(), stockInfo() приходят из js/site.js — он подключается раньше */
+/* money() объявляет js/site.js — он загружается раньше этой панели.
+   Раньше здесь было точно такое же объявление, и из-за него весь admin.js
+   падал с SyntaxError «Identifier money has already been declared»,
+   поэтому у своей функции другое имя. */
+const fmtMoney = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
 
 function utf8b64(str) {
   const bytes = new TextEncoder().encode(str);
@@ -145,9 +151,10 @@ const FILE_HEADER = `/* ========================================================
    Каждое растение — блок { ... } в списке PRODUCTS, между блоками запятая.
      id  — уникальный номер (у нового: +1 к последнему)
      category — одно из: "hvoynye" | "listvennye" | "mnogoletnie"
-     size  — размер (контейнер) из прайса, например "C3", "C7,5", "C10"
+     size  — размер (контейнер): "C3", "C5", "C7,5", "C10" или ""
      price — розничная цена числом, без пробелов и ₽
      stock — количество в наличии, штук (null — «уточняйте»)
+     available — true/false: есть ли растение в продаже (false = «Нет в наличии»)
      image — путь к фото, например "images/catalog/23.jpg" ("" — фото пока нет)
      gallery — доп. фото: ["images/catalog/23-1.jpg"] или []
      short — короткая подпись в карточке
@@ -165,6 +172,7 @@ function productToJS(p) {
     size: ${q(p.size || "")},
     price: ${Number(p.price)},
     stock: ${p.stock == null || p.stock === "" ? "null" : Number(p.stock)},
+    available: ${p.available === false ? "false" : "true"},
     image: ${q(p.image || "")},
     gallery: ${JSON.stringify(p.gallery || [])},
     short: ${q(p.short || "")},
@@ -294,8 +302,9 @@ async function addFiles(files) {
       } else {
         dataURL = await blobToDataURL(f);
       }
-      photos.push({ originalDataURL: dataURL, dataURL, state: null });
+      photos.push({ originalDataURL: dataURL, dataURL, state: null, name: f.name || "" });
       logLine("ok", `Фото готово (${photos.length === 1 ? "главное" : "доп. " + (photos.length - 1)}). Кнопка ✏️ — сменить фон и выровнять.`);
+      if (photos.length === 1) setTimeout(() => recognizePhoto(photos[0]), 160);
     } catch (e) {
       logLine("err", "Ошибка фото: " + e.message);
     }
@@ -329,10 +338,106 @@ function renderThumbs() {
   $("dzThumbs").querySelectorAll(".dz-thumb__x").forEach(b =>
     b.addEventListener("click", () => {
       photos.splice(+b.dataset.i, 1);
+      if (!photos.length) hideOfflineRecognition();
       renderThumbs(); renderPreview();
     }));
   $("dzThumbs").querySelectorAll(".dz-thumb__edit").forEach(b =>
     b.addEventListener("click", () => openEditor(+b.dataset.i)));
+}
+
+/* ------------------------------------------------------------------ */
+/* Офлайн-распознавание растения по фото (без API)                      */
+/* ------------------------------------------------------------------ */
+async function recognizePhoto(photo) {
+  if (typeof PlantID === "undefined") return;
+  try {
+    const res = await PlantID.detect(photo.dataURL, photo.name || "");
+    if (!res.candidates || !res.candidates.length) {
+      hideOfflineRecognition();
+      logLine("", "Определение без API: уверенного совпадения нет — заполните название и описание вручную.");
+      return;
+    }
+    showOfflineRecognition(res);
+  } catch (e) {
+    logLine("err", "Определение без API: " + e.message);
+  }
+}
+
+function showOfflineRecognition(res) {
+  recogCandidates = res.candidates;
+  const cat = key => ({ hvoynye: "хвойное", listvennye: "лиственное", mnogoletnie: "многолетнее" }[key] || key);
+  const box = $("offlineIdPanel");
+  if (!box) return;
+  box.style.display = "block";
+  $("idMatch").innerHTML =
+    `<option value="-1">Не заполнять — ввести вручную</option>` +
+    recogCandidates.map((c, i) =>
+      `<option value="${i}">${esc(c.product.name)} · ${cat(c.product.category)} · ${Math.round(c.confidence * 100)}%</option>`
+    ).join("");
+  const top = recogCandidates[0];
+  $("idMatch").value = "0";
+  recogPrev = collectForm();
+  applyOfflineProduct(top.product);
+  logLine("ok", "Без API: похоже на «" + top.product.name + "» (≈ " + Math.round(top.confidence * 100) + "%). Проверьте поля, при необходимости выберите другой вариант.");
+  $("btnOfflineUndo").onclick = () => {
+    if (!recogPrev) return;
+    $("fName").value = recogPrev.name || "";
+    $("fCategory").value = recogPrev.category || "hvoynye";
+    $("fShort").value = recogPrev.short || "";
+    $("fDesc").value = recogPrev.description || "";
+    renderPreview();
+    logLine("", "Заполнение без API отменено.");
+  };
+  $("btnOfflineHide").onclick = () => { $("offlineIdPanel").style.display = "none"; };
+}
+
+function applyOfflineProduct(p) {
+  $("fName").value = p.name;
+  $("fCategory").value = p.category;
+  $("fShort").value = p.short || "";
+  $("fDesc").value = p.description || "";
+  renderPreview();
+}
+
+function hideOfflineRecognition() {
+  recogCandidates = [];
+  const box = $("offlineIdPanel");
+  if (box) box.style.display = "none";
+}
+
+/* ---------- поиск описания в интернете (без API, открывает поисковик) ---------- */
+function currentRecogProduct() {
+  return recogCandidates[0]?.product || (editingId != null ? PRODUCTS.find(x => x.id === editingId) : null);
+}
+function publicImageUrl(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  return "https://samagon90.github.io/lera-project/" + String(path).replace(/^\.?\//, "");
+}
+function openSearch(engine, query) {
+  const q = encodeURIComponent(query);
+  const urls = {
+    google: "https://www.google.com/search?q=" + q,
+    yandex: "https://yandex.ru/search/?text=" + q,
+    lens: "https://lens.google.com/uploadbyurl?url=" + q,
+    yandexPhoto: "https://yandex.ru/images/search?rpt=imageview&url=" + q,
+  };
+  window.open(urls[engine] || urls.google, "_blank", "noopener");
+}
+function searchSelectedProduct(engine) {
+  const p = currentRecogProduct();
+  if (!p || !p.name) { logLine("", "Сначала выберите растение — поиск нечего искать."); return; }
+  openSearch(engine, p.name + " растение описание уход посадка");
+}
+function searchPhoto(engine) {
+  const p = currentRecogProduct();
+  const img = publicImageUrl(p?.image);
+  if (!img) {
+    logLine("", "Поиск по фото возможен после публикации фото (нужна публичная ссылка). Открываю поиск по названию.");
+    searchSelectedProduct(engine === "lens" ? "google" : "yandex");
+    return;
+  }
+  openSearch(engine, img);
 }
 
 /* ------------------------------------------------------------------ */
@@ -341,13 +446,14 @@ function renderThumbs() {
 function collectForm() {
   const name = $("fName").value.trim();
   const price = parseInt($("fPrice").value, 10);
-  const stock = parseInt($("fStock").value, 10);
+  const stock = parseInt($("fStock") ? $("fStock").value : "", 10);
   return {
     name,
     category: $("fCategory").value,
-    size: $("fSize").value.trim(),
+    size: $("fSize") ? $("fSize").value.trim() : "",
     price: isNaN(price) ? null : price,
     stock: isNaN(stock) ? null : Math.max(0, stock),
+    available: $("fAvailable") ? $("fAvailable").checked : true,
     short: $("fShort").value.trim(),
     description: $("fDesc").value.trim(),
   };
@@ -356,17 +462,24 @@ function collectForm() {
 function renderPreview() {
   const f = collectForm();
   const img = photos[0]?.dataURL || NO_PHOTO;
-  const cat = { hvoynye: "Хвойные", listvennye: "Лиственные", mnogoletnie: "Многолетние" }[f.category];
+  const cat = catTitle(f.category);
+  const out = f.available === false;
   const st = stockInfo(f);
   $("preview").innerHTML = `
-    <a class="card" href="javascript:void(0)">
-      <div class="card__img"><img src="${img}" alt=""><span class="card__tag">${cat}</span>
-        ${f.size ? `<span class="card__size">${esc(f.size)}</span>` : ""}</div>
+    <a class="card ${out ? "card--out" : ""}" href="javascript:void(0)">
+      <div class="card__img">
+        <img src="${img}" alt="">
+        <span class="card__tag">${cat}</span>
+        ${out ? '<span class="card__out">Нет в наличии</span>'
+              : (f.size ? `<span class="card__size">${esc(f.size)}</span>` : "")}
+      </div>
       <div class="card__body">
         <div class="card__name">${esc(f.name) || "Название растения"}</div>
         <div class="card__short">${esc(f.short) || (f.size ? "Контейнер " + esc(f.size) : "короткая подпись")}</div>
         <div class="card__bottom">
-          <span class="card__price">${f.price != null ? money(f.price) : "— ₽"}</span>
+          ${out
+            ? '<span class="card__price card__price--out">Нет в наличии</span>'
+            : `<span class="card__price">${f.price != null ? fmtMoney(f.price) : "— ₽"}</span>`}
           <span class="card__stock ${st.cls}">${st.text}</span>
         </div>
       </div>
@@ -375,6 +488,7 @@ function renderPreview() {
 }
 ["fName", "fCategory", "fSize", "fPrice", "fStock", "fShort", "fDesc"].forEach(id =>
   document.addEventListener("input", e => { if (e.target.id === id) renderPreview(); }));
+if ($("fAvailable")) $("fAvailable").addEventListener("change", renderPreview);
 
 function validate(f, isNew) {
   const errs = [];
@@ -387,8 +501,12 @@ function validate(f, isNew) {
 function resetForm() {
   editingId = null;
   photos = [];
-  ["fName", "fSize", "fPrice", "fStock", "fShort", "fDesc"].forEach(id => $(id).value = "");
+  ["fName", "fSize", "fPrice", "fStock", "fShort", "fDesc"].forEach(id => { if ($(id)) $(id).value = ""; });
   $("fCategory").value = "hvoynye";
+  if ($("fAvailable")) $("fAvailable").checked = true;
+  const aiBox = $("aiResult"); if (aiBox) aiBox.style.display = "none";
+  aiPrev = null;
+  hideOfflineRecognition(); recogPrev = null;
   $("btnReset").style.display = "none";
   $("formTitle").textContent = "Добавить растение";
   $("btnPublish").textContent = "Опубликовать на сайт";
@@ -396,164 +514,406 @@ function resetForm() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Таблица наличия (правка количества) + черновики                     */
+/* Таблица растений + черновики                                        */
 /* ------------------------------------------------------------------ */
-let stockEdits = {};        // id -> новое количество (ещё не сохранено)
-let tblLimit = 60;          // сколько строк показываем сразу
-
-function tblFiltered() {
+/* ------------------------------------------------------------------ */
+/* Таблица каталога: фото, название, категория, цена, наличие, действия  */
+/* ------------------------------------------------------------------ */
+function filteredProducts() {
   const q = ($("tblSearch")?.value || "").trim().toLowerCase();
   const cat = $("tblCat")?.value || "";
-  const noPhoto = $("tblNoPhoto")?.checked;
-  const noDesc = $("tblNoDesc")?.checked;
-  return PRODUCTS.filter(p => {
-    if (cat && p.category !== cat) return false;
-    if (noPhoto && p.image) return false;
-    if (noDesc && String(p.description || "").trim()) return false;
-    if (q && !(p.name + " " + (p.size || "")).toLowerCase().includes(q)) return false;
-    return true;
-  });
+  const avail = $("tblAvail")?.value || "";
+  let list = PRODUCTS.slice();
+  if (cat) list = list.filter(p => p.category === cat);
+  if (avail === "in") list = list.filter(p => inStock(p));
+  if (avail === "out") list = list.filter(p => !inStock(p));
+  const todo = $("tblTodo")?.value || "";
+  if (todo === "nophoto") list = list.filter(p => !p.image);
+  if (todo === "nodesc") list = list.filter(p => !String(p.description || "").trim());
+  if (q) list = list.filter(p => (p.name + " " + (p.short || "") + " " + (p.size || "") + " id" + p.id).toLowerCase().includes(q));
+  return list;
 }
 
-function stockValue(p) {
-  if (Object.prototype.hasOwnProperty.call(stockEdits, p.id)) return stockEdits[p.id];
-  return p.stock == null ? "" : p.stock;
+function catOptions(selected) {
+  return ["hvoynye", "listvennye", "mnogoletnie"].map(c =>
+    `<option value="${c}"${c === selected ? " selected" : ""}>${catTitle(c)}</option>`).join("");
 }
 
-function updateDirty() {
-  const n = Object.keys(stockEdits).length;
-  $("stockDirty").textContent = n ? `не сохранено: ${n}` : "";
-  $("btnSaveStock").disabled = !n;
+function productRow(p) {
+  const out = p.available === false;
+  const photosCount = (p.gallery || []).length + 1;
+  return `<tr class="ptable__row${out ? " ptable__row--out" : ""}" data-id="${p.id}">
+    <td data-label="Фото">
+      <a href="product.html?id=${p.id}" target="_blank" rel="noopener" title="Открыть карточку на сайте">
+        <img class="ptable__img" src="${prodImage(p)}" alt="" loading="lazy">
+      </a>
+    </td>
+    <td data-label="Название">
+      <div class="ptable__name">${esc(p.name)}${p.image ? "" : '<span class="tag-todo">нет фото</span>'}${String(p.description || "").trim() ? "" : '<span class="tag-todo">нет описания</span>'}</div>
+      <div class="ptable__meta">id ${p.id} · фото: ${p.image ? photosCount : 0}${out ? " · <b>нет в наличии</b>" : ""}</div>
+    </td>
+    <td data-label="Категория">
+      <select class="ptable__select" data-act="cat" data-id="${p.id}">${catOptions(p.category)}</select>
+    </td>
+    <td data-label="Размер">
+      <input class="ptable__size" type="text" list="sizeList" value="${esc(p.size || "")}" placeholder="—"
+             data-act="size" data-id="${p.id}" autocomplete="off">
+    </td>
+    <td data-label="Цена, ₽">
+      <input class="ptable__price" type="number" min="0" step="50" value="${Number(p.price) || 0}" data-act="price" data-id="${p.id}">
+    </td>
+    <td data-label="Кол-во, шт">
+      <input class="ptable__stock" type="number" min="0" step="1" inputmode="numeric"
+             value="${p.stock == null ? "" : Number(p.stock)}" placeholder="—"
+             data-act="stock" data-id="${p.id}" title="Количество в наличии. Пусто — «уточняйте», 0 — «Под заказ»">
+    </td>
+    <td data-label="Наличие">
+      <label class="switch" title="${out ? "Сейчас на сайте: «Нет в наличии»" : "Сейчас на сайте: в продаже"}">
+        <input type="checkbox" data-act="avail" data-id="${p.id}"${out ? "" : " checked"}>
+        <span class="switch__track"><span class="switch__dot"></span></span>
+        <span class="switch__text">${out ? "нет" : "есть"}</span>
+      </label>
+    </td>
+    <td data-label="Действия" class="ptable__actions">
+      <button class="prow__btn" data-act="edit" data-id="${p.id}">Изменить</button>
+      <button class="prow__btn" data-act="ai" data-id="${p.id}" title="Определить растение по фото и заполнить описание">🤖 ИИ</button>
+      <button class="prow__btn prow__btn--danger" data-act="del" data-id="${p.id}">Удалить</button>
+    </td>
+  </tr>`;
+}
+
+function draftRow(d, i) {
+  return `<tr class="ptable__row ptable__row--draft">
+    <td data-label="Фото"><img class="ptable__img" src="${d.imageDataURL || "images/site/7.jpg"}" alt=""></td>
+    <td data-label="Название">
+      <div class="ptable__name">${esc(d.name || "Без названия")}<span class="tag-draft">черновик</span></div>
+      <div class="ptable__meta">${catTitle(d.category)}${d.price != null ? " · " + fmtMoney(d.price) : ""}</div>
+    </td>
+    <td data-label="Категория">${catTitle(d.category)}</td>
+    <td data-label="Размер">${esc(d.size || "—")}</td>
+    <td data-label="Цена, ₽">${d.price != null ? fmtMoney(d.price) : "—"}</td>
+    <td data-label="Кол-во, шт">${d.stock == null ? "—" : d.stock}</td>
+    <td data-label="Наличие">${d.available === false ? "нет" : "—"}</td>
+    <td data-label="Действия" class="ptable__actions">
+      <button class="prow__btn" data-act="editdraft" data-i="${i}">В форму</button>
+      <button class="prow__btn prow__btn--danger" data-act="deldraft" data-i="${i}">Удалить</button>
+    </td>
+  </tr>`;
 }
 
 function renderTable() {
-  const list = tblFiltered();
-  const shown = list.slice(0, tblLimit);
-  const inStock = PRODUCTS.filter(p => Number(p.stock) > 0).length;
+  const list = filteredProducts();
+  const outCount = PRODUCTS.filter(p => !inStock(p)).length;
   const noPhotoCount = PRODUCTS.filter(p => !p.image).length;
-
-  $("prodCount").textContent = `— ${PRODUCTS.length} позиций, из них в наличии ${inStock}` +
+  $("prodCount").textContent =
+    `— ${PRODUCTS.length} на сайте` +
+    (outCount ? `, из них ${outCount} нет в наличии` : "") +
     (noPhotoCount ? `, без фото ${noPhotoCount}` : "") +
-    (drafts.length ? `, черновиков: ${drafts.length}` : "");
+    (drafts.length ? `, черновиков: ${drafts.length}` : "") +
+    (list.length !== PRODUCTS.length ? ` · показано: ${list.length}` : "");
 
-  const draftRows = drafts.map((d, i) => `<div class="prow">
-      <img src="${d.imageDataURL || NO_PHOTO}" alt="">
-      <div>
-        <div class="prow__name">${esc(d.name || "Без названия")}<span class="tag-draft">черновик</span></div>
-        <div class="prow__meta">${catTitle(d.category)}${d.size ? " · " + esc(d.size) : ""}${d.price != null ? " · " + money(d.price) : ""}</div>
-      </div>
-      <div class="prow__qty muted small">—</div>
-      <div class="prow__actions">
-        <button class="prow__btn" data-act="editdraft" data-i="${i}">В форму</button>
-        <button class="prow__btn prow__btn--danger" data-act="deldraft" data-i="${i}">Удалить</button>
-      </div>
-    </div>`).join("");
+  const body = [
+    ...drafts.map((d, i) => draftRow(d, i)),
+    ...list.map(p => productRow(p))
+  ].join("");
 
-  const rows = shown.map(p => {
-    const changed = Object.prototype.hasOwnProperty.call(stockEdits, p.id);
-    return `<div class="prow${changed ? " prow--changed" : ""}" data-row="${p.id}">
-      <img src="${prodImage(p)}" alt="" loading="lazy">
-      <div>
-        <div class="prow__name">${esc(p.name)}${p.image ? "" : `<span class="tag-todo">нет фото</span>`}${String(p.description || "").trim() ? "" : `<span class="tag-todo">нет описания</span>`}</div>
-        <div class="prow__meta">${catTitle(p.category)}${p.size ? " · контейнер " + esc(p.size) : ""} · ${money(p.price)} · id ${p.id}</div>
-      </div>
-      <label class="prow__qty" title="Количество в наличии, шт">
-        <input type="number" min="0" step="1" inputmode="numeric" placeholder="—"
-               value="${stockValue(p)}" data-qty="${p.id}">
-        <span>шт</span>
-      </label>
-      <div class="prow__actions">
-        <button class="prow__btn" data-act="edit" data-id="${p.id}">Фото и описание</button>
-        <button class="prow__btn prow__btn--danger" data-act="del" data-id="${p.id}">Удалить</button>
-      </div>
-    </div>`;
-  }).join("");
+  $("prodTable").innerHTML = `
+    <table class="ptable">
+      <thead><tr>
+        <th class="ptable__c-photo">Фото</th>
+        <th>Название</th>
+        <th class="ptable__c-cat">Категория</th>
+        <th class="ptable__c-size">Размер</th>
+        <th class="ptable__c-price">Цена, ₽</th>
+        <th class="ptable__c-stock">Кол-во, шт</th>
+        <th class="ptable__c-avail">Наличие</th>
+        <th class="ptable__c-act">Действия</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
 
-  $("prodTable").innerHTML = draftRows + rows +
-    (list.length ? "" : `<p class="muted small">Ничего не найдено по этому фильтру.</p>`);
+  bindTable();
+}
 
-  const more = $("btnMore");
-  if (list.length > shown.length) {
-    more.style.display = "";
-    more.textContent = `Показать ещё (осталось ${list.length - shown.length})`;
-  } else {
-    more.style.display = "none";
-  }
+function bindTable() {
+  $("prodTable").querySelectorAll("[data-act]").forEach(el => {
+    const act = el.dataset.act;
+    const id = el.dataset.id ? +el.dataset.id : null;
 
-  $("prodTable").querySelectorAll("input[data-qty]").forEach(inp =>
-    inp.addEventListener("input", () => {
-      const id = +inp.dataset.qty;
-      const p = PRODUCTS.find(x => x.id === id);
-      const raw = inp.value.trim();
-      const val = raw === "" ? null : Math.max(0, parseInt(raw, 10) || 0);
-      const orig = p.stock == null ? null : Number(p.stock);
-      if (val === orig) delete stockEdits[id];
-      else stockEdits[id] = val;
-      inp.closest(".prow").classList.toggle("prow--changed", Object.prototype.hasOwnProperty.call(stockEdits, id));
-      updateDirty();
-    }));
-
-  $("prodTable").querySelectorAll(".prow__btn").forEach(b => b.addEventListener("click", () => {
-    const act = b.dataset.act;
-    if (act === "edit") startEdit(+b.dataset.id);
-    if (act === "del") deleteProduct(+b.dataset.id);
-    if (act === "editdraft") loadDraftToForm(+b.dataset.i);
-    if (act === "deldraft") {
-      if (confirm("Удалить черновик из браузера?")) {
-        drafts.splice(+b.dataset.i, 1); saveDrafts(); renderTable();
-      }
+    if (act === "avail" || act === "cat" || act === "price" || act === "stock" || act === "size") {
+      el.addEventListener("change", () => {
+        if (act === "avail") toggleAvailable(id, el.checked);
+        if (act === "cat") updateField(id, { category: el.value }, "категория: " + catTitle(el.value));
+        if (act === "price") {
+          const v = parseInt(el.value, 10);
+          if (isNaN(v) || v < 0) {
+            alert("Цена — число (например 1300), без пробелов и без знака ₽.");
+            renderTable();
+            return;
+          }
+          updateField(id, { price: v }, "цена: " + fmtMoney(v));
+        }
+        if (act === "size") {
+          const v = el.value.trim().replace(/^[Сс]/, "C").replace(/\s+/g, "");
+          updateField(id, { size: v }, v ? "размер: " + v : "размер убран");
+        }
+        if (act === "stock") {
+          const raw = el.value.trim();
+          if (raw === "") {
+            updateField(id, { stock: null }, "количество: уточняйте");
+            return;
+          }
+          const v = parseInt(raw, 10);
+          if (isNaN(v) || v < 0) {
+            alert("Количество — целое число штук (например 120). Пустое поле = «уточняйте».");
+            renderTable();
+            return;
+          }
+          const p = PRODUCTS.find(x => x.id === id);
+          const patch = { stock: v };
+          // 0 штук — растение автоматически уходит в «нет в наличии», больше 0 — возвращается
+          if (v === 0 && p && p.available !== false) patch.available = false;
+          if (v > 0 && p && p.available === false) patch.available = true;
+          updateField(id, patch, "количество: " + v + " шт");
+        }
+      });
+      if (act === "price" || act === "stock" || act === "size")
+        el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); });
+      return;
     }
-  }));
 
-  updateDirty();
+    el.addEventListener("click", () => {
+      if (act === "edit") startEdit(id);
+      if (act === "del") deleteProduct(id);
+      if (act === "ai") aiForProduct(id);
+      if (act === "editdraft") loadDraftToForm(+el.dataset.i);
+      if (act === "deldraft") {
+        if (confirm("Удалить черновик из браузера?")) {
+          drafts.splice(+el.dataset.i, 1); saveDrafts(); renderTable();
+        }
+      }
+    });
+  });
 }
 
-/* --- сохранение изменённого количества --- */
-function applyStockEdits(products) {
-  let n = 0;
-  for (const [id, val] of Object.entries(stockEdits)) {
-    const p = products.find(x => x.id === Number(id));
-    if (p) { p.stock = val; n++; }
-  }
-  return n;
+/* ------------------------------------------------------------------ */
+/* Правки из таблицы: наличие, цена, категория                          */
+/* ------------------------------------------------------------------ */
+async function updateField(id, patch, label) {
+  const p = PRODUCTS.find(x => x.id === id);
+  if (!p) return;
+  const ok = await patchOnGitHub(id, patch, `[admin] ${p.name} — ${label}`);
+  if (ok) Object.assign(p, patch);
+  renderTable();
 }
 
-async function saveStock() {
-  const ids = Object.keys(stockEdits);
-  if (!ids.length) return;
+async function toggleAvailable(id, value) {
+  const p = PRODUCTS.find(x => x.id === id);
+  if (!p) return;
+  await updateField(id, { available: !!value }, value ? "вернули в наличие" : "сняли с наличия");
+}
 
+async function setAllAvailable(value) {
+  if (!PRODUCTS.length) return;
+  if (!confirm(value
+      ? "Включить наличие у ВСЕХ растений каталога?"
+      : "Выключить наличие у ВСЕХ растений каталога (на сайте появится «Нет в наличии»)?"))
+    return;
   if (!ghPush) {
-    alert("GitHub не подключён (нет токена с правом записи).\n\nСейчас скачается готовый файл products.js — загрузите его в репозиторий в папку js.");
-    const products = PRODUCTS.map(p => ({ ...p }));
-    applyStockEdits(products);
-    const blob = new Blob([productsToJS(products)], { type: "text/javascript;charset=utf-8" });
-    downloadDataURL(await blobToDataURL(blob), "products.js");
-    logLine("ok", "Скачан products.js с новым количеством — загрузите его в папку js репозитория.");
+    alert("GitHub не подключён — изменить каталог нельзя.\n\n" +
+      "Откройте «Настройки публикации» и вставьте токен с правом Contents: Read and write.");
     return;
   }
-
-  $("publog").innerHTML = "";
-  $("btnSaveStock").disabled = true;
+  $("publog").style.display = "block";
   try {
     logLine("", "Читаю js/products.js с GitHub…");
     const { text, sha } = await ghGetFile("js/products.js");
     const products = parseProductsJS(text);
-    const n = applyStockEdits(products);
-    logLine("", `Обновляю количество (${n} поз.)…`);
+    products.forEach(x => { x.available = !!value; });
     await ghPutFile("js/products.js", utf8b64(productsToJS(products)),
-      `[admin] Обновлено наличие: ${n} поз.`, sha);
-    logLine("ok", "Готово! Наличие обновится на сайте через 1–2 минуты.");
-
-    // локальная копия
-    PRODUCTS.length = 0;
-    products.forEach(p => PRODUCTS.push(p));
-    stockEdits = {};
+      `[admin] Наличие: ${value ? "включили всем" : "выключили всем"}`, sha);
+    PRODUCTS.forEach(x => { x.available = !!value; });
     renderTable();
+    logLine("ok", value ? "Всем растениям включено наличие." : "Все растения сняты с наличия.");
+    logLine("", "Изменится на сайте через 1–2 минуты.");
   } catch (e) {
-    logLine("err", "Ошибка сохранения наличия: " + e.message);
-    logLine("", "Числа в таблице не потеряны — попробуйте нажать «Сохранить количество» ещё раз.");
-    updateDirty();
+    logLine("err", "Ошибка: " + e.message);
+    renderTable();
   }
+}
+
+/* Одна и та же операция: прочитать products.js → изменить → записать */
+async function patchOnGitHub(id, patch, message) {
+  if (!ghPush) {
+    alert("GitHub не подключён — изменить товар на сайте нельзя.\n\n" +
+      "Откройте «Настройки публикации», вставьте токен с правом Contents: Read and write — " +
+      "и правки из таблицы будут уходить на сайт сами.");
+    return false;
+  }
+  $("publog").style.display = "block";
+  try {
+    logLine("", "Сохраняю: " + message.replace("[admin] ", "") + "…");
+    const { text, sha } = await ghGetFile("js/products.js");
+    const products = parseProductsJS(text);
+    const target = products.find(x => x.id === id);
+    if (!target) throw new Error("растение не найдено в файле products.js");
+    Object.assign(target, patch);
+    await ghPutFile("js/products.js", utf8b64(productsToJS(products)), message, sha);
+    logLine("ok", "Готово — на сайте появится через 1–2 минуты.");
+    return true;
+  } catch (e) {
+    logLine("err", "Ошибка: " + e.message);
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* ИИ-помощник: определяет растение по фото                             */
+/* ------------------------------------------------------------------ */
+let aiPrev = null;   // снимок полей до заполнения ИИ (для кнопки «Отменить»)
+
+function aiReady() { return typeof AdminAI !== "undefined" && AdminAI.isReady(); }
+
+function renderAiHint() {
+  const el = $("aiHint");
+  if (!el) return;
+  el.textContent = aiReady()
+    ? `ИИ: ${AdminAI.providerLabel()} · ${AdminAI.model()}`
+    : "ИИ не настроен — нажмите «Настроить ИИ»";
+}
+
+function openAiSettings() {
+  const s = $("settings");
+  if (s) {
+    s.style.display = "block";
+    s.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  setTimeout(() => { try { $("aiKey").focus(); } catch (e) {} }, 400);
+  if (!aiReady() && typeof AdminAI !== "undefined") alert(AdminAI.requirement());
+}
+
+function showAiResult(data) {
+  const box = $("aiResult");
+  if (!box) return;
+  const pct = Math.round((data.confidence || 0) * 100);
+  box.style.display = "block";
+  box.innerHTML = `
+    <div class="ai-result__head">
+      <b>🤖 ИИ заполнил поля</b>
+      <span class="ai-result__conf">уверенность: ${pct}%</span>
+    </div>
+    <p class="muted small">${
+      data.comment
+        ? esc(data.comment)
+        : (data.latin ? "Латинское название: " + esc(data.latin) : "Проверьте текст — особенно сорт и цифры.")
+    }</p>
+    <div class="ai-result__actions">
+      <button class="btn btn--ghost btn--sm" id="btnAiUndo" type="button">Отменить заполнение</button>
+      <button class="btn btn--ghost btn--sm" id="btnAiHide" type="button">Скрыть</button>
+    </div>`;
+  $("btnAiUndo").addEventListener("click", undoAi);
+  $("btnAiHide").addEventListener("click", () => { box.style.display = "none"; });
+}
+
+function undoAi() {
+  if (!aiPrev) return;
+  $("fName").value = aiPrev.name;
+  $("fCategory").value = aiPrev.category;
+  $("fShort").value = aiPrev.short;
+  $("fDesc").value = aiPrev.description;
+  aiPrev = null;
+  const box = $("aiResult"); if (box) box.style.display = "none";
+  renderPreview();
+  logLine("", "Заполнение ИИ отменено — вернулся ваш текст.");
+}
+
+/* Заполнить форму по фото, которое уже лежит в дропзоне */
+async function aiFillForm() {
+  if (!photos.length) {
+    alert("Сначала добавьте фото — перетащите его в рамку выше, выберите файлом или вставьте Ctrl+V.");
+    return;
+  }
+  if (!aiReady()) { openAiSettings(); return; }
+
+  const btn = $("btnAI");
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "🤖 ИИ смотрит фото…";
+  $("publog").style.display = "block";
+  logLine("", `Отправляю фото в ИИ (${AdminAI.providerLabel()}, ${AdminAI.model()})…`);
+  try {
+    const data = await AdminAI.analyze(photos[0].dataURL);
+    if (!data.name && !data.description)
+      throw new Error("ИИ не вернул название" + (data.comment ? " (" + data.comment + ")" : ""));
+    if (!data.confidence)
+      logLine("", "Внимание: ИИ не уверен в определении." + (data.comment ? " " + data.comment : ""));
+    aiPrev = collectForm();
+    if (data.name) $("fName").value = data.name;
+    if (data.category) $("fCategory").value = data.category;
+    if (data.short) $("fShort").value = data.short;
+    if (data.description) $("fDesc").value = data.description;
+    showAiResult(data);
+    renderPreview();
+    logLine("ok", "Поля заполнены. Проверьте текст, поправьте что нужно — и публикуйте.");
+  } catch (e) {
+    logLine("err", "ИИ: " + e.message);
+    alert("ИИ не справился: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+
+/* Определить растение по фото уже опубликованного товара */
+async function aiForProduct(id) {
+  const p = PRODUCTS.find(x => x.id === id);
+  if (!p) return;
+  if (!aiReady()) { openAiSettings(); return; }
+  if (!confirm(`Определить растение по фото «${p.name}»?\n\n` +
+      `Форма заполнится заново: название, категория, подпись и описание. ` +
+      `Вы всё проверите и нажмёте «Сохранить изменения».`))
+    return;
+
+  $("publog").style.display = "block";
+  logLine("", "ИИ смотрит фото «" + p.name + "»…");
+  try {
+    const data = await AdminAI.analyzeUrl(p.image);
+    if (!data.name && !data.description)
+      throw new Error("ИИ не вернул название" + (data.comment ? " (" + data.comment + ")" : ""));
+    startEdit(id);
+    aiPrev = collectForm();
+    if (data.name) $("fName").value = data.name;
+    if (data.category) $("fCategory").value = data.category;
+    if (data.short) $("fShort").value = data.short;
+    if (data.description) $("fDesc").value = data.description;
+    showAiResult(data);
+    logLine("ok", "Готово. Проверьте поля и нажмите «Сохранить изменения».");
+  } catch (e) {
+    logLine("err", "ИИ: " + e.message);
+    alert("ИИ не справился: " + e.message);
+  }
+}
+
+/* Настройки ИИ в блоке «Настройки публикации» */
+function renderAiSettings() {
+  if (typeof AdminAI === "undefined") return;
+  const c = AdminAI.get();
+  $("aiProvider").value = c.provider;
+  $("aiModel").value = c.model || "";
+  $("aiModel").placeholder = AdminAI.DEFAULT_MODEL[c.provider] || "модель";
+  $("aiKey").value = c.key || "";
+  $("aiModelList").innerHTML = AdminAI.models().map(m => `<option value="${m}"></option>`).join("");
+  renderAiStatus();
+}
+
+function renderAiStatus() {
+  const note = $("aiTestNote");
+  if (note) {
+    note.textContent = aiReady()
+      ? `Подключено: ${AdminAI.providerLabel()} · модель ${AdminAI.model()}`
+      : "ИИ не подключён: укажите модель и ключ.";
+  }
+  renderAiHint();
 }
 
 const catTitle = key => ({ hvoynye: "Хвойные", listvennye: "Лиственные", mnogoletnie: "Многолетние" }[key] || key);
@@ -564,12 +924,14 @@ function startEdit(id) {
   editingId = id;
   $("fName").value = p.name;
   $("fCategory").value = p.category;
-  $("fSize").value = p.size || "";
+  if ($("fSize")) $("fSize").value = p.size || "";
   $("fPrice").value = p.price;
-  $("fStock").value = p.stock == null ? "" : p.stock;
+  if ($("fStock")) $("fStock").value = p.stock == null ? "" : p.stock;
   $("fShort").value = p.short || "";
   $("fDesc").value = p.description || "";
+  if ($("fAvailable")) $("fAvailable").checked = p.available !== false;
   photos = [];
+  hideOfflineRecognition(); recogPrev = null;
   renderThumbs();
   // предпросмотр с текущим фото с сайта
   $("preview").innerHTML = `
@@ -591,7 +953,7 @@ function cardMarkup(p) {
       <div class="card__name">${esc(p.name)}</div>
       <div class="card__short">${esc(p.short || (p.size ? "Контейнер " + p.size : ""))}</div>
       <div class="card__bottom">
-        <span class="card__price">${money(p.price)}</span>
+        <span class="card__price">${fmtMoney(p.price)}</span>
         <span class="card__stock ${st.cls}">${st.text}</span>
       </div>
     </div>
@@ -602,11 +964,14 @@ function loadDraftToForm(i) {
   const d = drafts[i];
   $("fName").value = d.name; $("fCategory").value = d.category;
   $("fPrice").value = d.price ?? ""; $("fShort").value = d.short || "";
+  if ($("fSize")) $("fSize").value = d.size || "";
+  if ($("fStock")) $("fStock").value = d.stock == null ? "" : d.stock;
   $("fDesc").value = d.description || "";
   photos = [
-    ...(d.imageDataURL ? [{ originalDataURL: d.imageDataURL, dataURL: d.imageDataURL, state: null }] : []),
-    ...(d.galleryDataURLs || []).map(u => ({ originalDataURL: u, dataURL: u, state: null }))
+    ...(d.imageDataURL ? [{ originalDataURL: d.imageDataURL, dataURL: d.imageDataURL, state: null, name: d.name || "" }] : []),
+    ...(d.galleryDataURLs || []).map(u => ({ originalDataURL: u, dataURL: u, state: null, name: "" }))
   ];
+  hideOfflineRecognition(); recogPrev = null;
   renderThumbs(); renderPreview();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -664,7 +1029,9 @@ async function publish() {
     const oldEntry = editingId != null ? products.find(p => p.id === editingId) : null;
     const entry = {
       id,
-      name: f.name, category: f.category, size: f.size, price: f.price, stock: f.stock,
+      name: f.name, category: f.category, price: f.price,
+      size: f.size, stock: f.stock,
+      available: f.available !== false,
       image: (editingId != null && !photos.length)
         ? (oldEntry ? oldEntry.image || "" : mainPath)   // фото не меняли — оставляем как было ("" = фото ещё нет)
         : mainPath,
@@ -760,7 +1127,9 @@ async function downloadFiles() {
 
   if (oldEntry) {
     Object.assign(oldEntry, {
-      name: f.name, category: f.category, size: f.size, price: f.price, stock: f.stock,
+      name: f.name, category: f.category, price: f.price,
+      size: f.size, stock: f.stock,
+      available: f.available !== false,
       image: photos[0] ? `images/catalog/${id}.jpg` : oldEntry.image,
       gallery: gallery.length ? gallery : (oldEntry.gallery || []),
       short: f.short, description: f.description
@@ -768,6 +1137,7 @@ async function downloadFiles() {
   } else {
     products.push({
       id, name: f.name, category: f.category, size: f.size, price: f.price, stock: f.stock,
+      available: f.available !== false,
       image: `images/catalog/${id}.jpg`, gallery,
       short: f.short, description: f.description
     });
@@ -809,6 +1179,57 @@ function saveDraft() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Смена пароля админ-панели                                           */
+/* ------------------------------------------------------------------ */
+async function changeAdminPassword() {
+  if (!ghPush) {
+    alert("Смена пароля требует подключённый GitHub с правом записи.\n\nОткройте «Настройки публикации», введите fine-grained токен (Contents: Read and write) и нажмите «Сохранить и проверить».");
+    return;
+  }
+  if (typeof ADMIN_AUTH?.hashPassword !== "function") {
+    alert("Не удалось загрузить утилиту смены пароля. Обновите страницу: Ctrl+F5.");
+    return;
+  }
+  const p1 = prompt("Введите новый пароль (минимум 4 символа):");
+  if (!p1 || p1.length < 4) { alert("Пароль должен содержать минимум 4 символа."); return; }
+  const p2 = prompt("Повторите новый пароль:");
+  if (p1 !== p2) { alert("Пароли не совпадают — попробуйте ещё раз."); return; }
+
+  const btn = $("btnChangePass");
+  if (btn) btn.disabled = true;
+  $("publog").innerHTML = "";
+  logLine("", "Считаю актуальные файлы админки…");
+  try {
+    const [authRes, htmlRes] = await Promise.all([
+      ghGetFile("js/admin-auth.js"),
+      ghGetFile("admin.html")
+    ]);
+    const oldHash = (authRes.text.match(/const HASH = "([0-9a-f]{64})"/) || [])[1];
+    if (!oldHash) throw new Error("в js/admin-auth.js не найден HASH");
+
+    const newHash = await ADMIN_AUTH.hashPassword(p1);
+    const oldVer = (htmlRes.text.match(/admin-auth\.js\?v=(\d+)/) || [])[1] || "3";
+    const newVer = String(Number(oldVer) + 1);
+
+    let auth = authRes.text
+      .replace(oldHash, newHash)
+      .replace(/const SESSION_VERSION = \d+;/, `const SESSION_VERSION = ${newVer};`);
+    let html = htmlRes.text
+      .split("?v=" + oldVer).join("?v=" + newVer)
+      .replace(new RegExp("if \\(s && s\\.v !== " + oldVer + "\\)", "g"), `if (s && s.v !== ${newVer})`);
+
+    logLine("", `Загружаю на GitHub файлы версии ${newVer}…`);
+    await ghPutFile("js/admin-auth.js", utf8b64(auth), "[admin] Смена пароля админ-панели", authRes.sha);
+    await ghPutFile("admin.html", utf8b64(html), `[admin] Смена пароля админ-панели (версия ${newVer})`, htmlRes.sha);
+    logLine("ok", "Пароль изменён на GitHub. Выйдите из панели и войдите с новым паролем.");
+  } catch (e) {
+    logLine("err", "Ошибка смены пароля: " + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Инициализация                                                       */
 /* ------------------------------------------------------------------ */
 $("btnSettings").addEventListener("click", () => {
@@ -828,24 +1249,79 @@ $("btnForget").addEventListener("click", async () => {
   await checkConnection(false);
 });
 $("btnPublish").addEventListener("click", publish);
-$("btnSaveStock").addEventListener("click", saveStock);
-$("btnMore").addEventListener("click", () => { tblLimit += 60; renderTable(); });
-["tblSearch", "tblCat", "tblNoPhoto", "tblNoDesc"].forEach(id =>
-  $(id).addEventListener("input", () => { tblLimit = 60; renderTable(); }));
-
-/* подсказки размеров контейнеров из уже добавленных растений */
-$("sizeList").innerHTML = [...new Set(PRODUCTS.map(p => p.size).filter(Boolean))]
-  .sort((a, b) => parseFloat(a.replace(/[^\d,]/g, "").replace(",", ".")) -
-                  parseFloat(b.replace(/[^\d,]/g, "").replace(",", ".")))
-  .map(v => `<option value="${v}"></option>`).join("");
 $("btnSaveDraft").addEventListener("click", saveDraft);
 $("btnDownload").addEventListener("click", downloadFiles);
 $("btnReset").addEventListener("click", resetForm);
+$("btnChangePass").addEventListener("click", changeAdminPassword);
+
+/* --- офлайн-распознавание и поиск --- */
+$("idMatch").addEventListener("change", e => {
+  const v = e.target.value;
+  if (v === "-1") return;
+  const c = recogCandidates[+v];
+  if (c) { recogPrev = collectForm(); applyOfflineProduct(c.product); }
+});
+$("cfgTokenEye").addEventListener("click", e => {
+  e.preventDefault();
+  const inp = $("cfgToken");
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  $("cfgTokenEye").textContent = show ? "🙈" : "👁";
+  $("cfgTokenEye").setAttribute("aria-label", show ? "Скрыть токен" : "Показать токен");
+  inp.focus();
+});
+$("btnSearchG").addEventListener("click", () => searchSelectedProduct("google"));
+$("btnSearchY").addEventListener("click", () => searchSelectedProduct("yandex"));
+$("btnSearchPhotoY").addEventListener("click", () => searchPhoto("yandexPhoto"));
+$("btnSearchPhotoG").addEventListener("click", () => searchPhoto("lens"));
+
+/* --- каталог: фильтры и массовое наличие --- */
+$("tblSearch").addEventListener("input", renderTable);
+$("tblCat").addEventListener("change", renderTable);
+$("tblAvail").addEventListener("change", renderTable);
+if ($("tblTodo")) $("tblTodo").addEventListener("change", renderTable);
+
+/* подсказки размеров контейнеров — из каталога */
+if ($("sizeList")) {
+  $("sizeList").innerHTML = [...new Set(PRODUCTS.map(p => p.size).filter(Boolean))]
+    .sort((a, b) => parseFloat(a.replace(/[^\d,]/g, "").replace(",", ".")) -
+                    parseFloat(b.replace(/[^\d,]/g, "").replace(",", ".")))
+    .map(v => `<option value="${v}"></option>`).join("");
+}
+$("btnAllIn").addEventListener("click", () => setAllAvailable(true));
+$("btnAllOut").addEventListener("click", () => setAllAvailable(false));
+
+/* --- ИИ-помощник --- */
+$("btnAI").addEventListener("click", aiFillForm);
+$("btnAiSettings").addEventListener("click", openAiSettings);
+$("btnAiSave").addEventListener("click", async () => {
+  AdminAI.set({
+    provider: $("aiProvider").value,
+    model: $("aiModel").value.trim(),
+    key: $("aiKey").value.trim()
+  });
+  renderAiSettings();
+  if (!AdminAI.isReady()) { alert("Укажите модель и ключ."); return; }
+  const note = $("aiTestNote");
+  note.textContent = "Проверяю ключ…";
+  try {
+    await AdminAI.test();
+    note.textContent = "✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model();
+  } catch (e) {
+    note.textContent = "✗ " + e.message;
+  }
+  renderAiHint();
+});
+$("btnAiForget").addEventListener("click", () => {
+  AdminAI.set({ key: "", model: "" });
+  renderAiSettings();
+});
 
 initDropzone();
 $("cfgRepo").value = cfg.repo;
 $("cfgBranch").value = cfg.branch;
 $("cfgToken").value = cfg.token;
+renderAiSettings();
 renderPreview();
 renderTable();
 checkConnection();

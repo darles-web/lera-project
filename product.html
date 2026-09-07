@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/assistant.css">
+<link rel="stylesheet" href="css/animations.css">
 </head>
 <body>
 <div id="site-header"></div>
@@ -25,64 +26,83 @@
 
 <script src="js/products.js"></script>
 <script src="js/site.js"></script>
+<script src="js/animations.js"></script>
 <script>
 renderHeader(); renderFooter();
+
+const escHTML = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 const id = Number(new URLSearchParams(location.search).get("id"));
 const p = PRODUCTS.find(x => x.id === id);
 const main = document.getElementById("main");
 
 if (!p) {
-  main.innerHTML = `<div class="empty"><h2>Растение не найдено</h2>
-    <p style="margin-top:14px"><a class="btn" href="catalog.html">Вернуться в каталог</a></p></div>`;
+  main.innerHTML = '<div class="empty"><h2>Растение не найдено</h2>'
+    + '<p style="margin-top:14px"><a class="btn" href="catalog.html">Вернуться в каталог</a></p></div>';
 } else {
   document.title = p.name + " — питомник «ДарЛес»";
   const images = [prodImage(p), ...(p.gallery || [])];
   const st = stockInfo(p);
-  const paras = (p.description || "").trim()
-    ? p.description.split(/\n\s*\n/).map(t => `<p>${t.trim()}</p>`).join("")
-    : `<p class="muted">Подробное описание этого растения скоро появится. Пока что все характеристики,
-        размеры и рекомендации по посадке с удовольствием расскажем по телефону.</p>`;
+  const paras = String(p.description || "").trim()
+    ? p.description.split(/\n\s*\n/).map(t => "<p>" + escHTML(t.trim()) + "</p>").join("")
+    : '<p class="muted">Подробное описание этого растения скоро появится. '
+      + 'Характеристики, размеры и рекомендации по посадке с удовольствием расскажем по телефону.</p>';
 
-  main.innerHTML = `
-    <div class="crumbs" style="padding-top:26px">
-      <a href="index.html">Главная</a> / <a href="catalog.html?cat=${p.category}">${CATEGORIES[p.category].title}</a> / ${p.name}
-    </div>
-    <div class="product">
-      <div class="gallery">
-        <div class="gallery__main"><img id="mainImg" src="${images[0]}" alt="${p.name}"></div>
-        ${images.length > 1 ? `<div class="gallery__thumbs">${images.map((src,i)=>
-          `<img src="${src}" data-src="${src}" class="${i===0?'active':''}" alt="">`).join("")}</div>` : ""}
-      </div>
-      <div>
-        <div class="product__cat">${CATEGORIES[p.category].title}</div>
-        <h1 class="product__title">${p.name}</h1>
-        <div class="product__price">${money(p.price)}</div>
-        <div class="product__facts">
-          ${p.size ? `<span class="fact"><b>Размер:</b> контейнер ${p.size}</span>` : ""}
-          <span class="fact stock ${st.cls}">${st.text}</span>
-        </div>
-        <div class="product__note">Розничная цена за одно растение. Наличие меняется — перед приездом уточняйте по телефону.</div>
-        <div class="product__actions">
-          <a class="btn" href="tel:+79781049236">Связаться · +7 (978) 104 92 36</a>
-          <a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Telegram</a>
-          <a class="btn btn--ghost" href="https://m.vk.ru/club238739856" target="_blank" rel="noopener">ВКонтакте</a>
-        </div>
-        <div class="contact-card" style="grid-template-columns:1fr;margin-top:26px">
-          <div>
-            <h3>Как заказать</h3>
-            <span style="opacity:.9">Позвоните нам или напишите в соцсетях — расскажем о наличии, размерах и доставке.</span>
-            <a href="tel:+79788573947" style="margin-top:10px">+7 (978) 857 39 47</a>
-            <a href="tel:+79780487204">+7 (978) 048 72 04</a>
-            <a href="mailto:darles-pitomnik@mail.ru">darles-pitomnik@mail.ru</a>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="product__desc">
-      <h2>Описание</h2>
-      ${paras}
-    </div>`;
+  const catTitle = escHTML(CATEGORIES[p.category].title);
+  const catKey = escHTML(p.category);
+  const pname = escHTML(p.name);
+  const price = money(p.price);
+  const mainImg = escHTML(images[0]);
+
+  let galleryHTML = "";
+  if (images.length > 1) {
+    galleryHTML = '<div class="gallery__thumbs">' + images.map((src,i) =>
+      '<img src="' + escHTML(src) + '" data-src="' + escHTML(src) + '" class="'
+      + (i===0?'active':'') + '" alt="">').join("") + '</div>';
+  }
+
+  main.innerHTML = ''
+    + '<div class="crumbs" style="padding-top:26px">'
+    +   '<a href="index.html">Главная</a> / '
+    +   '<a href="catalog.html?cat=' + catKey + '">' + catTitle + '</a> / '
+    +   pname
+    + '</div>'
+    + '<div class="product">'
+    +   '<div class="gallery">'
+    +     '<div class="gallery__main"><img id="mainImg" src="' + mainImg + '" alt="' + pname + '"></div>'
+    +     galleryHTML
+    +   '</div>'
+    +   '<div>'
+    +   '<div class="product__cat">' + catTitle + '</div>'
+    +   '<h1 class="product__title">' + pname + '</h1>'
+    +   (p.available === false ? '<div class="product__out">Нет в наличии</div>' : '')
+    +   '<div class="product__price">' + price + '</div>'
+    +   '<div class="product__facts">'
+    +     (p.size ? '<span class="fact"><b>Размер:</b> контейнер ' + escHTML(p.size) + '</span>' : '')
+    +     '<span class="fact stock ' + st.cls + '">' + st.text + '</span>'
+    +   '</div>'
+    +     '<div class="product__note">Розничная цена за одно растение. Наличие меняется — перед приездом уточняйте по телефону.</div>'
+    +     '<div class="product__actions">'
+    +       '<a class="btn" href="tel:+79781049236">Связаться · +7 (978) 104 92 36</a>'
+    +       '<a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Telegram</a>'
+    +       '<a class="btn btn--ghost" href="https://m.vk.ru/club238739856" target="_blank" rel="noopener">ВКонтакте</a>'
+    +     '</div>'
+    +     '<div class="contact-card" style="grid-template-columns:1fr;margin-top:26px">'
+    +       '<div>'
+    +         '<h3>Как заказать</h3>'
+    +         '<span style="opacity:.9">Позвоните нам или напишите в соцсетях — расскажем о наличии, размерах и доставке.</span>'
+    +         '<a href="tel:+79788573947" style="margin-top:10px">+7 (978) 857 39 47</a>'
+    +         '<a href="tel:+79780487204">+7 (978) 048 72 04</a>'
+    +         '<a href="mailto:darles-pitomnik@mail.ru">darles-pitomnik@mail.ru</a>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="product__desc">'
+    +   '<h2>Описание</h2>'
+    +   paras
+    + '</div>';
 
   const thumbs = main.querySelectorAll(".gallery__thumbs img");
   thumbs.forEach(t => t.addEventListener("click", () => {

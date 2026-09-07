@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /js/admin-auth.js
+Disallow: /js/panel.inc
+Disallow: /INSTRUCTION.md
+Disallow: /ШПАРГАЛКА.md
+Disallow: /README.md
+Disallow: /.git/

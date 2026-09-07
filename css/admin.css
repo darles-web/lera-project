@@ -32,6 +32,13 @@
 .check{display:flex!important;align-items:center;gap:10px;font-size:14px;font-weight:500!important;margin:14px 0 4px}
 .check input{width:18px;height:18px;accent-color:var(--green)}
 
+/* --- показ/скрытие токена --- */
+.pass-wrap{position:relative}
+.pass-wrap input{padding-right:52px}
+.pass-eye{position:absolute;right:8px;top:7px;width:36px;height:36px;border:0;border-radius:50%;
+  background:transparent;cursor:pointer;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center}
+.pass-eye:hover{background:var(--gray-light)}
+
 .btn--sm{padding:11px 26px!important;font-size:13px!important}
 .btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
 
@@ -122,25 +129,87 @@
 .pe-btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .pe-dialog__foot{display:flex;justify-content:flex-end;gap:12px;padding:16px 24px;border-top:1px solid var(--line)}
 
-/* ---------- ТАБЛИЦА НАЛИЧИЯ ---------- */
-.stock-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0 6px;
-  padding:14px 16px;background:var(--gray-light);border:1px solid var(--line);border-radius:14px}
-.stock-bar input[type=search],.stock-bar select{font:inherit;padding:10px 14px;border:1px solid var(--line);
-  border-radius:999px;background:#fff;color:var(--black)}
-.stock-bar input[type=search]{min-width:240px}
-.stock-bar__spacer{flex:1}
-.stock-bar .btn--sm:disabled{opacity:.45;cursor:default}
-.prow{grid-template-columns:64px 1fr auto auto!important}
-.prow--changed{border-color:var(--green);background:#f4faf5}
-.prow__qty{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--gray);font-weight:600}
-.prow__qty input{width:96px;font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:10px;
-  text-align:right;background:#fff;color:var(--black)}
-.prow__qty input:focus{outline:0;border-color:var(--green)}
-.prow--changed .prow__qty input{border-color:var(--green);font-weight:700}
+/* ===== ИИ-ПОМОЩНИК ===== */
+.ai-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 4px}
+.btn--ai{background:#eef4ef;border:1px solid #cfe0d4;color:var(--green);padding:11px 22px;
+  border-radius:999px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn--ai:hover:not(:disabled){background:#e2ece4}
+.btn--ai:disabled{opacity:.6;cursor:progress}
+.ai-result{margin:12px 0 4px;border:1px solid #cfe0d4;background:#f4f9f5;border-radius:12px;padding:14px 18px}
+.ai-result__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ai-result__head b{color:var(--green)}
+.ai-result__conf{font-size:13px;color:var(--gray)}
+.ai-result__actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.offline-label{display:block;font-weight:600;font-size:14px;margin:10px 0}
+.offline-label select{width:100%;font:inherit;font-weight:400;padding:10px 14px;margin-top:7px;
+  border:1px solid var(--line);border-radius:10px;color:var(--black);background:#fff}
+
+/* ===== ТАБЛИЦА КАТАЛОГА ===== */
+.ptools{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:4px 0 16px}
+.ptools input[type=search],.ptools select{font:inherit;padding:10px 14px;border:1px solid var(--line);
+  border-radius:10px;background:#fff;color:var(--black)}
+.ptools input[type=search]{flex:1 1 220px;min-width:170px}
+.ptools .check{margin:0!important}
+
+.ptable{width:100%;border-collapse:collapse;font-size:14px}
+.ptable th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);
+  font-weight:700;padding:0 12px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ptable td{padding:10px 12px;border-bottom:1px solid #eef2ef;vertical-align:middle}
+.ptable tbody tr:hover{background:#f8fbf9}
+.ptable__row--out{background:#fffaf7}
+.ptable__row--out .ptable__name{color:#8a6a5c}
+.ptable__row--draft{background:#fffdf7}
+.ptable__img{width:46px;height:62px;object-fit:contain;background:#fff;border:1px solid var(--line);
+  border-radius:6px;display:block}
+.ptable__name{font-weight:600;font-size:14.5px}
+.ptable__meta{color:var(--gray);font-size:12.5px;margin-top:3px}
+.ptable__select,.ptable__price{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--black);width:100%}
+.ptable__price{max-width:130px}
+.ptable__select:focus,.ptable__price:focus{outline:2px solid var(--green-soft);outline-offset:1px;border-color:var(--green-soft)}
+.ptable__actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.ptable__c-photo{width:74px}
+.ptable__c-cat{width:150px}
+.ptable__c-price{width:140px}
+.ptable__c-avail{width:130px}
+.ptable__c-act{width:260px}
+
+/* ===== ПЕРЕКЛЮЧАТЕЛЬ НАЛИЧИЯ ===== */
+.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:13px;position:relative}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch__track{position:relative;width:44px;height:24px;border-radius:999px;background:#d7ded8;transition:.2s;flex:none}
+.switch__dot{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;
+  transition:.2s;box-shadow:0 1px 3px rgba(17,17,17,.25)}
+.switch input:checked + .switch__track{background:var(--green)}
+.switch input:checked + .switch__track .switch__dot{transform:translateX(20px)}
+.switch input:focus-visible + .switch__track{outline:2px solid var(--green-soft);outline-offset:2px}
+.switch__text{color:var(--gray);font-weight:600}
+.switch input:checked ~ .switch__text{color:var(--green)}
+
+/* ===== МОБИЛЬНАЯ ВЕРСИЯ ТАБЛИЦЫ ===== */
+@media(max-width:900px){
+  .ptable thead{display:none}
+  .ptable,.ptable tbody,.ptable tr,.ptable td{display:block;width:100%}
+  .ptable tr{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:#fff}
+  .ptable td{border:0;padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:14px}
+  .ptable td::before{content:attr(data-label);color:var(--gray);font-size:12.5px;font-weight:600;flex:none}
+  .ptable td > *{flex:0 1 auto;min-width:120px}
+  .ptable td[data-label="Название"]{display:block}
+  .ptable td[data-label="Название"] > div{min-width:0}
+  .ptable__actions{justify-content:flex-start}
+  .ptable__price{max-width:100%}
+}
+
+/* ===== РАЗМЕР И КОЛИЧЕСТВО В ТАБЛИЦЕ ===== */
+.ptable__size,.ptable__stock{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--black);width:100%}
+.ptable__size{max-width:100px;text-transform:uppercase}
+.ptable__stock{max-width:110px;text-align:right;font-weight:600}
+.ptable__size:focus,.ptable__stock:focus{outline:2px solid var(--green-soft);outline-offset:1px;border-color:var(--green-soft)}
+.ptable__c-size{width:110px}
+.ptable__c-stock{width:130px}
 .tag-todo{display:inline-block;background:#f1f2f1;color:#6b7370;font-size:11px;font-weight:700;
   padding:2px 9px;border-radius:999px;margin-left:8px;vertical-align:middle;letter-spacing:.03em}
-.admin__more{display:flex;justify-content:center;margin-top:16px}
-@media(max-width:820px){
-  .prow{grid-template-columns:48px 1fr!important}
-  .prow__qty,.prow__actions{grid-column:1/-1}
+@media(max-width:900px){
+  .ptable__size,.ptable__stock{max-width:100%}
 }

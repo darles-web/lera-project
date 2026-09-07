@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/assistant.css">
+<link rel="stylesheet" href="css/animations.css">
 </head>
 <body>
 <div id="site-header"></div>
@@ -70,6 +71,7 @@
 
 <script src="js/products.js"></script>
 <script src="js/site.js"></script>
+<script src="js/animations.js"></script>
 <script>
 renderHeader(); renderFooter();
 
@@ -92,12 +94,15 @@ function render() {
   let list = PRODUCTS.filter(p => {
     if (cat && p.category !== cat) return false;
     if (size && p.size !== size) return false;
-    if (only && !(Number(p.stock) > 0)) return false;
+    if (only && !inStock(p)) return false;
     if (q && !(p.name + " " + (p.short || "") + " " + (p.size || "")).toLowerCase().includes(q)) return false;
     return true;
   });
 
   list.sort((a, b) => {
+    // чего нет в наличии — в конец
+    const io = (inStock(a) ? 0 : 1) - (inStock(b) ? 0 : 1);
+    if (io) return io;
     let r;
     if (sortKey === "price" || sortKey === "stock") {
       r = (Number(a[sortKey]) || 0) - (Number(b[sortKey]) || 0);

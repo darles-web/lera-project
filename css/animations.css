@@ -1,0 +1,419 @@
+/* =====================================================================
+   АНІМАЦІИ И УЛУЧШЕНИЯ ИНТЕРФЕЙСА «ДарЛес»
+   Элегантные, природные, не навязчивые — в духе зелёного питомника.
+   ===================================================================== */
+
+/* --- Плавный скролл и стартовая анимация страницы --- */
+body{
+  animation: pageIn .7s ease-out;
+}
+@keyframes pageIn{
+  from{opacity:0; transform:translateY(6px)}
+  to{opacity:1; transform:none}
+}
+
+/* --- Улучшенный скроллбар в тон сайта --- */
+html{scrollbar-width:thin; scrollbar-color:var(--green-soft) var(--gray-light)}
+::-webkit-scrollbar{width:10px; height:10px}
+::-webkit-scrollbar-track{background:var(--gray-light)}
+::-webkit-scrollbar-thumb{background:#c3d0c5; border-radius:10px; border:2px solid var(--gray-light)}
+::-webkit-scrollbar-thumb:hover{background:var(--green-soft)}
+
+/* selection (выделение текста) */
+::selection{background:rgba(60,107,76,.22); color:var(--green)}
+
+/* =====================================================================
+   HERO — параллакс, летающие листики, пульсация логотипа
+   ===================================================================== */
+.hero__bg{
+  transform:scale(1.06);
+  animation: heroKenBurns 20s ease-in-out infinite alternate;
+}
+@keyframes heroKenBurns{
+  from{transform:scale(1.04) translate(0,0)}
+  to{transform:scale(1.12) translate(-1%,-1%)}
+}
+.hero__bg::after{
+  background:linear-gradient(180deg,
+    rgba(15,28,20,.25) 0%,
+    rgba(15,28,20,.45) 60%,
+    rgba(15,28,20,.65) 100%);
+}
+.hero__logo{
+  animation: logoFloat 6s ease-in-out infinite, logoIn 1.2s .3s both cubic-bezier(.2,.8,.2,1);
+}
+@keyframes logoFloat{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-10px)}
+}
+@keyframes logoIn{
+  from{opacity:0; transform:translateY(30px) scale(.95); filter:blur(6px)}
+  to{opacity:1; transform:none; filter:drop-shadow(0 6px 24px rgba(0,0,0,.35))}
+}
+.hero__scroll{
+  animation: scrollFade 1s 1.2s both, scrollBounce 2s 2s ease-in-out infinite;
+}
+@keyframes scrollBounce{
+  0%,100%{transform:translate(-50%,0)}
+  50%{transform:translate(-50%,8px)}
+}
+@keyframes scrollFade{
+  from{opacity:0}
+  to{opacity:.85}
+}
+
+/* Летающие листики на фоне hero */
+.leaf{
+  position:absolute;
+  width:28px; height:28px;
+  opacity:.5;
+  animation: leafFall linear infinite;
+  pointer-events:none;
+  z-index:1;
+}
+.hero__logo{position:relative; z-index:2}
+@keyframes leafFall{
+  0%{transform:translateY(-10vh) translateX(0) rotate(0deg); opacity:0}
+  10%{opacity:.55}
+  90%{opacity:.4}
+  100%{transform:translateY(110vh) translateX(var(--drift,80px)) rotate(720deg); opacity:0}
+}
+
+/* =====================================================================
+   TOPBAR — улучшенная тень при скролле
+   ===================================================================== */
+.topbar{
+  transition:box-shadow .3s, background .3s, backdrop-filter .3s;
+  backdrop-filter:saturate(180%) blur(0px);
+}
+.topbar.scrolled{
+  box-shadow:0 6px 24px rgba(34,67,47,.08);
+  backdrop-filter:saturate(180%) blur(10px);
+  background:rgba(255,255,255,.92);
+}
+.topbar__logo img{transition:transform .5s}
+.topbar__logo:hover img{transform:rotate(-6deg) scale(1.06)}
+.topbar__nav a{position:relative; padding:4px 0; transition:color .25s}
+.topbar__nav a::after{
+  content:""; position:absolute; left:0; right:0; bottom:-2px;
+  height:2px; background:var(--green); border-radius:2px;
+  transform:scaleX(0); transform-origin:center;
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+}
+.topbar__nav a:hover::after{transform:scaleX(1)}
+
+/* =====================================================================
+   ПОЯВЛЕНИЕ ЭЛЕМЕНТОВ ПРИ ПРОКРУТКЕ (reveal)
+   ===================================================================== */
+.reveal{
+  opacity:0;
+  transform:translateY(30px);
+  transition:opacity .8s cubic-bezier(.2,.8,.2,1), transform .8s cubic-bezier(.2,.8,.2,1);
+  will-change:opacity, transform;
+}
+.reveal.reveal--left{transform:translateX(-36px)}
+.reveal.reveal--right{transform:translateX(36px)}
+.reveal.reveal--scale{transform:scale(.94); opacity:0}
+.reveal.in-view{
+  opacity:1;
+  transform:none;
+}
+
+/* Задержки для красивой последовательности */
+.reveal:nth-child(2){transition-delay:.08s}
+.reveal:nth-child(3){transition-delay:.16s}
+.reveal:nth-child(4){transition-delay:.24s}
+.reveal:nth-child(5){transition-delay:.32s}
+.reveal:nth-child(6){transition-delay:.4s}
+
+/* =====================================================================
+   КНОПКИ — эффект "shine" (блик при наведении) + пульсация главной CTA
+   ===================================================================== */
+.btn{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  transition:background .25s, border-color .25s, transform .2s, box-shadow .25s;
+  box-shadow:0 4px 14px rgba(34,67,47,.0);
+}
+.btn::before{
+  content:"";
+  position:absolute;
+  top:0; left:-100%;
+  width:60%; height:100%;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+  transform:skewX(-20deg);
+  transition:left .6s ease;
+  z-index:-1;
+}
+.btn:hover::before{left:120%}
+.btn:hover{
+  box-shadow:0 10px 28px rgba(34,67,47,.22);
+  transform:translateY(-2px);
+}
+.btn:active{transform:translateY(0); box-shadow:0 3px 10px rgba(34,67,47,.18)}
+
+/* Пульсация главной кнопки на Hero */
+.hero + .section .btn--big,
+.section .btn--big{
+  animation: btnPulse 2.5s ease-in-out infinite;
+}
+@keyframes btnPulse{
+  0%,100%{box-shadow:0 8px 22px rgba(34,67,47,.2), 0 0 0 0 rgba(60,107,76,.45)}
+  50%{box-shadow:0 8px 22px rgba(34,67,47,.2), 0 0 0 14px rgba(60,107,76,0)}
+}
+
+/* =====================================================================
+   КАРТОЧКИ ТОВАРОВ — плавное масштабирование, тень
+   ===================================================================== */
+.card{transition:transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s, border-color .35s}
+.card:hover{
+  box-shadow:0 22px 48px rgba(34,67,47,.12);
+  transform:translateY(-7px);
+  border-color:var(--green-soft);
+}
+.card__img{background:linear-gradient(180deg,#fbfdfb 0%,#f1f5f2 100%)}
+.card__img img{transition:transform .7s cubic-bezier(.2,.8,.2,1), filter .5s}
+.card:hover .card__img img{transform:scale(1.08); filter:saturate(1.1)}
+.card__more{transition:transform .25s, color .25s}
+.card:hover .card__more{color:var(--green); transform:translateX(4px)}
+.card__tag{backdrop-filter:blur(6px)}
+
+/* =====================================================================
+   КРУГЛЫЕ КАТЕГОРИИ — лёгкий эффект увеличения + блик
+   ===================================================================== */
+.circle__img{
+  position:relative;
+  overflow:hidden;
+  transition:box-shadow .35s, transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.circle__img::after{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.3), transparent 60%);
+  opacity:0; transition:opacity .4s;
+}
+.circle:hover .circle__img{box-shadow:0 14px 32px rgba(34,67,47,.2); transform:translateY(-8px) scale(1.03)}
+.circle:hover .circle__img::after{opacity:1}
+.circle__label{transition:color .25s, transform .25s}
+.circle:hover .circle__label{color:var(--green-soft); transform:scale(1.04)}
+
+/* =====================================================================
+   СТАТИСТИКА — анимированные цифры
+   ===================================================================== */
+.stat{
+  transition:transform .3s, box-shadow .3s, border-color .3s;
+  background:linear-gradient(135deg, #fff 0%, #fafcfa 100%);
+}
+.stat:hover{
+  transform:translateY(-4px);
+  box-shadow:0 14px 30px rgba(34,67,47,.08);
+  border-color:var(--green-soft);
+}
+.stat__num{
+  background:linear-gradient(135deg, var(--green) 0%, var(--green-soft) 100%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+  display:inline-block;
+}
+
+/* =====================================================================
+   FACT-КАРТОЧКИ — иконки с мягким пульсом
+   ===================================================================== */
+.fact{transition:transform .3s, box-shadow .3s, border-color .3s}
+.fact:hover{transform:translateY(-3px); box-shadow:0 14px 30px rgba(34,67,47,.07); border-color:var(--green-soft)}
+.fact__ico{
+  position:relative;
+  background:linear-gradient(135deg, var(--green) 0%, var(--green-soft) 100%);
+}
+.fact__ico svg{fill:#fff}
+.fact__ico::before{
+  content:""; position:absolute; inset:-6px;
+  border-radius:50%;
+  background:var(--green); opacity:.12;
+  animation: icoPulse 2.4s ease-out infinite;
+}
+@keyframes icoPulse{
+  0%{transform:scale(.8); opacity:.2}
+  100%{transform:scale(1.6); opacity:0}
+}
+
+/* =====================================================================
+   КАРУСЕЛИ — улучшенные стрелки
+   ===================================================================== */
+.carousel__arrow{
+  transition:transform .3s, background .25s, opacity .25s;
+  backdrop-filter:blur(6px);
+}
+.carousel__arrow:hover{transform:translateY(-50%) scale(1.1); background:#fff}
+.carousel__arrow--prev:hover{transform:translateY(-50%) scale(1.1) rotate(-5deg)}
+.carousel__arrow--next:hover{transform:translateY(-50%) scale(1.1) rotate(5deg)}
+
+.dot{transition:all .3s}
+
+/* =====================================================================
+   КОНТАКТНАЯ КАРТОЧКА — мягкий градиент + сдвиг при наведении
+   ===================================================================== */
+.contact-card{
+  position:relative;
+  background:linear-gradient(135deg, var(--green) 0%, #2c5540 60%, var(--green-soft) 100%);
+  background-size:200% 200%;
+  animation: gradientShift 8s ease-in-out infinite alternate;
+  transition:transform .3s, box-shadow .3s;
+  overflow:hidden;
+}
+.contact-card::before{
+  content:"";
+  position:absolute;
+  right:-60px; top:-60px;
+  width:220px; height:220px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.08), transparent 70%);
+  pointer-events:none;
+}
+.contact-card::after{
+  content:"";
+  position:absolute;
+  left:-40px; bottom:-40px;
+  width:160px; height:160px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.06), transparent 70%);
+  pointer-events:none;
+}
+@keyframes gradientShift{
+  from{background-position:0% 50%}
+  to{background-position:100% 50%}
+}
+.contact-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 20px 48px rgba(34,67,47,.25);
+}
+.contact-card a{transition:opacity .2s, transform .2s}
+.contact-card a:hover{opacity:.85; transform:translateX(3px); text-decoration:none}
+
+/* =====================================================================
+   РАЗДЕЛИТЕЛЬ С ВОЛНОЙ (между секциями)
+   ===================================================================== */
+.section-divider{
+  display:block;
+  width:100%;
+  height:60px;
+  color:var(--gray-light);
+}
+.section--gray + .section .section-divider,
+.section + .section--gray .section-divider{
+  color:var(--gray-light);
+}
+
+/* =====================================================================
+   TABS — подчёркивание с анимацией
+   ===================================================================== */
+.tab{transition:all .25s; position:relative}
+.tab::after{content:""; position:absolute; bottom:-3px; left:50%; width:0; height:2px;
+  background:var(--green); border-radius:2px; transition:all .3s; transform:translateX(-50%)}
+.tab.active::after{width:60%}
+.tab:hover{transform:translateY(-2px)}
+
+/* =====================================================================
+   СТРАНИЦА ТОВАРА — плавное увеличение фото
+   ===================================================================== */
+.gallery__main img{transition:transform .6s, filter .4s}
+.gallery__main img:hover{transform:scale(1.04); filter:saturate(1.08)}
+.gallery__thumbs img{transition:all .25s}
+.gallery__thumbs img:hover{transform:translateY(-2px); border-color:var(--green-soft)}
+
+/* =====================================================================
+   FOOTER — более живые соц. иконки
+   ===================================================================== */
+.social{transition:transform .25s, background .25s, border-color .25s}
+.social:hover{transform:translateY(-4px) rotate(-6deg)}
+.footer a{transition:opacity .2s, color .2s}
+.footer a:hover{opacity:1; color:#fff}
+
+/* =====================================================================
+   KINDS (список видов растений)
+   ===================================================================== */
+.kind{transition:transform .3s, background .3s, border-color .3s}
+.kind:hover{transform:translateX(6px); background:#eef4ef; border-left-color:var(--green-soft)}
+
+/* =====================================================================
+   ПОЛЕ ПОИСКА в каталоге — focus-эффект
+   ===================================================================== */
+.toolbar input, .toolbar select{
+  transition:border-color .2s, box-shadow .2s, transform .2s;
+}
+.toolbar input:focus{
+  outline:none;
+  border-color:var(--green-soft);
+  box-shadow:0 0 0 4px rgba(60,107,76,.12);
+}
+
+/* =====================================================================
+   BACK-TO-TOP кнопка (создаётся через JS)
+   ===================================================================== */
+.to-top{
+  position:fixed; bottom:28px; right:28px; z-index:50;
+  width:52px; height:52px; border-radius:50%;
+  background:var(--green); color:#fff; border:0;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  box-shadow:0 8px 22px rgba(34,67,47,.3);
+  opacity:0; transform:translateY(14px) scale(.8);
+  pointer-events:none;
+  transition:all .3s cubic-bezier(.2,.8,.2,1);
+  font-size:20px;
+}
+.to-top.show{opacity:1; transform:none; pointer-events:auto}
+.to-top:hover{background:var(--green-soft); transform:translateY(-4px) rotate(-8deg)}
+
+/* =====================================================================
+   СКЕЛЕТОН ПРИ ЗАГРУЗКЕ КАРТОЧЕК (небольшая фишка)
+   ===================================================================== */
+.skeleton-pulse{
+  background:linear-gradient(90deg, #f1f5f2 0%, #e7eee8 50%, #f1f5f2 100%);
+  background-size:200% 100%;
+  animation: skeletonShimmer 1.4s infinite;
+  border-radius:8px;
+}
+@keyframes skeletonShimmer{
+  0%{background-position:200% 0}
+  100%{background-position:-200% 0}
+}
+
+/* =====================================================================
+   МЕЛКИЕ УЛУЧШЕНИЯ
+   ===================================================================== */
+/* Плавное выделение при переходе по якорю */
+:target{animation: targetHighlight 1.5s ease-out}
+@keyframes targetHighlight{
+  0%{box-shadow:0 0 0 0 rgba(60,107,76,.3); border-radius:var(--radius)}
+  100%{box-shadow:0 0 0 20px rgba(60,107,76,0); border-radius:var(--radius)}
+}
+
+/* Заголовки секций с подчёркиванием по центру */
+.section .center h2{position:relative; display:inline-block}
+.section .center h2::after{
+  content:"";
+  display:block;
+  width:60px; height:3px;
+  background:var(--green);
+  border-radius:3px;
+  margin:14px auto 0;
+  transform:scaleX(0);
+  transition:transform .6s .2s cubic-bezier(.2,.8,.2,1);
+}
+.section .center h2.in-view::after{transform:scaleX(1)}
+
+/* Кнопки навигации в каруселях при ховере секции */
+.row-carousel{overflow:visible}
+
+/* Адаптация для тех, у кого выключены анимации в системе */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+  .reveal{opacity:1; transform:none}
+}

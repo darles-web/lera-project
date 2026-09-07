@@ -137,6 +137,13 @@ h3{font-size:20px}
 .card__price{font-size:19px;font-weight:700;color:var(--green)}
 .card__more{font-size:14px;color:var(--gray)}
 
+/* ---------- «НЕТ В НАЛИЧИИ» (выключается в админ-панели) ---------- */
+.card__out{position:absolute;left:0;right:0;bottom:0;background:rgba(34,67,47,.92);color:#fff;
+  font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;text-align:center;padding:6px 0}
+.card--out .card__img img{filter:grayscale(.3);opacity:.7}
+.card--out .card__name{color:var(--gray)}
+.card__price--out{font-size:15px;font-weight:600;color:var(--gray)}
+
 /* ---------- CATEGORY CIRCLES ---------- */
 .circles{display:flex;justify-content:center;gap:clamp(24px,6vw,90px);flex-wrap:wrap;margin-top:52px}
 .circle{text-align:center}
@@ -160,6 +167,8 @@ h3{font-size:20px}
 .toolbar input,.toolbar select{font:inherit;padding:12px 16px;border:1px solid var(--line);border-radius:999px;color:var(--black);background:#fff}
 .toolbar input{min-width:280px}
 .toolbar .count{color:var(--gray);font-size:14px}
+.toolbar__check{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--gray);white-space:nowrap;cursor:pointer}
+.toolbar__check input{width:18px;height:18px;accent-color:var(--green)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:24px;margin:34px 0 20px}
 .empty{text-align:center;color:var(--gray);padding:70px 0}
 
@@ -208,6 +217,37 @@ h3{font-size:20px}
   .topbar__logo span{display:none}
   .btn--big{padding:16px 36px;font-size:15px}
   .toolbar input{min-width:100%}
+  .wrap{padding:0 16px}
+
+  /* МОБИЛЬНЫЙ КАТАЛОГ — компактная «маркетплейс»-сетка: 3 колонки,
+     квадратное фото, название в 2 строки, цена. Подпись скрыта,
+     чтобы на экран помещалось сразу несколько рядов карточек. */
+  #grid{grid-template-columns:repeat(3,1fr);gap:12px 10px;margin:22px 0 12px}
+  #grid .card{border-radius:10px}
+  #grid .card__img{aspect-ratio:1/1;border-bottom:0}
+  #grid .card__img img{transition:none}
+  #grid .card__tag{display:none}
+  #grid .card__body{padding:8px 6px 10px}
+  #grid .card__name{font-size:12px;line-height:1.25;font-weight:600;
+    min-height:2.5em;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden}
+  #grid .card__short{display:none}
+  #grid .card__bottom{display:block;margin-top:6px}
+  #grid .card__price{font-size:13px;font-weight:700}
+  #grid .card__more{display:none}
+
+  /* Шапка каталога компактнее — больше карточек на первом экране */
+  .page-head--catalog{padding:30px 0 0}
+  .page-head--catalog h2{font-size:24px}
+  .page-head--catalog .lead{display:none}
+  .page-head--catalog .crumbs{margin-bottom:8px}
+  .page-head--catalog .tabs{margin:18px 0 4px;gap:10px;flex-wrap:nowrap;
+    justify-content:flex-start;overflow-x:auto;padding-bottom:6px;
+    scrollbar-width:none;-ms-overflow-style:none}
+  .page-head--catalog .tabs::-webkit-scrollbar{display:none}
+  .page-head--catalog .tab{padding:6px 16px 6px 6px;gap:8px;flex:0 0 auto;font-size:13px}
+  .page-head--catalog .tab img{width:32px;height:32px}
+  .toolbar{margin:12px 0 6px}
 }
 
 /* ---------- РАЗМЕР И НАЛИЧИЕ (карточка, товар, таблица) ---------- */

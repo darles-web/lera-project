@@ -17,11 +17,12 @@ const num = n => new Intl.NumberFormat("ru-RU").format(n);
 const NO_PHOTO = "images/site/no-photo.svg";
 const prodImage = p => (p && p.image) ? p.image : NO_PHOTO;
 
-/* Размер (контейнер) из прайса: C3, C5, C7,5, C10 */
-const sizeLabel = p => (p && p.size) ? p.size : "";
+/* Есть ли растение в продаже: выключатель «наличие» + количество */
+const inStock = p => p.available !== false && (p.stock == null || Number(p.stock) > 0);
 
 /* Наличие: stock — число штук, null/undefined — «уточняйте» */
 function stockInfo(p) {
+  if (p && p.available === false) return { cls: "stock--no", text: "Нет в наличии", short: "нет" };
   const s = p ? p.stock : null;
   if (s == null || s === "") return { cls: "stock--ask", text: "Наличие: уточняйте", short: "уточняйте" };
   if (Number(s) <= 0) return { cls: "stock--no", text: "Под заказ", short: "под заказ" };
@@ -120,25 +121,28 @@ function renderFooter() {
     <div class="wrap footer__bottom">
       <span>© ${new Date().getFullYear()} Питомник «ДарЛес»</span>
       <span>Сайт-витрина. Заказ — по телефону или в соцсетях.</span>
-      <a href="admin.html" style="opacity:.55;font-size:13px">Админ-панель</a>
     </div>
   </footer>`;
 }
 
 function cardHTML(p) {
+  const out = p.available === false;
   const st = stockInfo(p);
-  const size = sizeLabel(p);
-  return `<a class="card" href="product.html?id=${p.id}">
+  const size = p.size || "";
+  return `<a class="card${out ? " card--out" : ""}" href="product.html?id=${p.id}">
     <div class="card__img">
       <img src="${prodImage(p)}" alt="${p.name}" loading="lazy">
       <span class="card__tag">${CATEGORIES[p.category]?.title || ""}</span>
-      ${size ? `<span class="card__size" title="Размер контейнера">${size}</span>` : ""}
+      ${out ? '<span class="card__out">Нет в наличии</span>'
+            : (size ? `<span class="card__size" title="Размер контейнера">${size}</span>` : "")}
     </div>
     <div class="card__body">
       <div class="card__name">${p.name}</div>
       <div class="card__short">${p.short || (size ? "Контейнер " + size : "")}</div>
       <div class="card__bottom">
-        <span class="card__price">${money(p.price)}</span>
+        ${out
+          ? '<span class="card__price card__price--out">Нет в наличии</span>'
+          : `<span class="card__price">${money(p.price)}</span>`}
         <span class="card__stock ${st.cls}">${st.text}</span>
       </div>
     </div>
