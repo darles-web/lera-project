@@ -10,10 +10,10 @@ const ADMIN_AUTH = (() => {
   // ------ НАСТРОЙКИ ------
   const SALT = "darles_salt_w79r4l905";
   // HASH = SHA-256(salt + ":" + password). Сменить пароль — см. инструкцию в конце файла.
-  // 2026-09-06: пароль сброшен владельцем после блокировки доступа.
-  const HASH = "95315a5b76ff56a9488900d611fb5a8360d5924744254bd722461d997e492e5b";
+  // 2026-09-07: пароль сброшен по запросу владельца для удалённого доступа.
+  const HASH = "ea975e9e7ca97c439fc779014f30f795ddeedf9134e817172d0cbd8f7f1cefc5";
   const SESSION_KEY = "darles_admin_session";
-  const SESSION_VERSION = 5; // поднят при добавлении кнопки «показать пароль» и офлайн-распознавания — старые сессии автоматически сбрасываются
+  const SESSION_VERSION = 7; // поднят при добавлении кнопки «показать пароль» и офлайн-распознавания — старые сессии автоматически сбрасываются
   const ATTEMPTS_KEY = "darles_admin_attempts";
   const MAX_ATTEMPTS = 5;
   const LOCKOUT_MS = 5 * 60 * 1000; // 5 минут блокировки после 5 неудачных попыток
@@ -101,6 +101,7 @@ const ADMIN_AUTH = (() => {
           </div>
         </label>
         <button class="auth__btn" type="submit" ${lockLeft>0?"disabled":""}>Войти</button>
+        <p class="auth__hint">Это пароль входа в админку, не GitHub-токен и не пароль от GitHub. При копировании лишние пробелы по краям автоматически убираются.</p>
         <div class="auth__err" id="authErr" ${lockMsg?`style="display:block"`:""}>${lockMsg}</div>
         <a href="index.html" class="auth__back">← Вернуться на сайт</a>
       </form>
@@ -133,6 +134,7 @@ const ADMIN_AUTH = (() => {
           color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;margin-top:4px}
         .auth__btn:hover:not(:disabled){background:#2f5540}
         .auth__btn:disabled{opacity:.5;cursor:not-allowed}
+        .auth__hint{color:#6b7c70;font-size:12px;line-height:1.45;margin:12px 0 0}
         .auth__err{color:#b3261e;font-size:13px;margin-top:14px;min-height:18px;display:none}
         .auth__back{display:inline-block;margin-top:22px;color:#6b7c70;font-size:13px;text-decoration:none}
         .auth__back:hover{color:#3c6b4c}
@@ -156,7 +158,7 @@ const ADMIN_AUTH = (() => {
 
     form.addEventListener("submit", async e => {
       e.preventDefault();
-      const pass = input.value;
+      const pass = input.value.trim();
       if (!pass) return;
       const btn = form.querySelector(".auth__btn");
       btn.disabled = true; btn.textContent = "Проверка…";

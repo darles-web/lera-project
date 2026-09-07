@@ -1208,15 +1208,17 @@ async function changeAdminPassword() {
     if (!oldHash) throw new Error("в js/admin-auth.js не найден HASH");
 
     const newHash = await ADMIN_AUTH.hashPassword(p1);
-    const oldVer = (htmlRes.text.match(/admin-auth\.js\?v=(\d+)/) || [])[1] || "3";
-    const newVer = String(Number(oldVer) + 1);
+    const oldHtmlVer = Number((htmlRes.text.match(/admin-auth\.js\?v=(\d+)/) || [])[1] || "3");
+    const oldSessionVer = Number((authRes.text.match(/const SESSION_VERSION = (\d+);/) || [])[1] || oldHtmlVer);
+    const newVer = String(Math.max(oldHtmlVer, oldSessionVer) + 1);
 
     let auth = authRes.text
       .replace(oldHash, newHash)
       .replace(/const SESSION_VERSION = \d+;/, `const SESSION_VERSION = ${newVer};`);
     let html = htmlRes.text
-      .split("?v=" + oldVer).join("?v=" + newVer)
-      .replace(new RegExp("if \\(s && s\\.v !== " + oldVer + "\\)", "g"), `if (s && s.v !== ${newVer})`);
+      .split("?v=" + oldHtmlVer).join("?v=" + newVer)
+      .replace(/const AUTH_VERSION = "\d+";/g, `const AUTH_VERSION = "${newVer}";`)
+      .replace(/if \(s && s\.v !== \d+\)/g, `if (s && s.v !== ${newVer})`);
 
     logLine("", `Загружаю на GitHub файлы версии ${newVer}…`);
     await ghPutFile("js/admin-auth.js", utf8b64(auth), "[admin] Смена пароля админ-панели", authRes.sha);
