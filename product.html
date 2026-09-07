@@ -3,13 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <title>Растение — питомник «ДарЛес»</title>
+<meta name="description" content="Декоративное растение из питомника «ДарЛес» в Крыму: описание, цена, наличие.">
+
+<link rel="canonical" href="https://samagon90.github.io/lera-project/product.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Питомник «ДарЛес»">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Растение — питомник «ДарЛес»">
+<meta property="og:description" content="Декоративное растение из питомника «ДарЛес» в Крыму: описание, цена, наличие.">
+<meta property="og:url" content="https://samagon90.github.io/lera-project/product.html">
+<meta property="og:image" content="https://samagon90.github.io/lera-project/images/site/2.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1d4a2c">
 <link rel="icon" href="images/site/6.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/assistant.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
 <div id="site-header"></div>
 
 <main class="wrap" id="main"></main>
@@ -25,68 +41,7 @@
 
 <script src="js/products.js"></script>
 <script src="js/site.js"></script>
-<script>
-renderHeader(); renderFooter();
-
-const id = Number(new URLSearchParams(location.search).get("id"));
-const p = PRODUCTS.find(x => x.id === id);
-const main = document.getElementById("main");
-
-if (!p) {
-  main.innerHTML = `<div class="empty"><h2>Растение не найдено</h2>
-    <p style="margin-top:14px"><a class="btn" href="catalog.html">Вернуться в каталог</a></p></div>`;
-} else {
-  document.title = p.name + " — питомник «ДарЛес»";
-  const images = [p.image, ...(p.gallery || [])];
-  const paras = p.description.split(/\n\s*\n/).map(t => `<p>${t.trim()}</p>`).join("");
-
-  main.innerHTML = `
-    <div class="crumbs" style="padding-top:26px">
-      <a href="index.html">Главная</a> / <a href="catalog.html?cat=${p.category}">${CATEGORIES[p.category].title}</a> / ${p.name}
-    </div>
-    <div class="product">
-      <div class="gallery">
-        <div class="gallery__main"><img id="mainImg" src="${images[0]}" alt="${p.name}"></div>
-        ${images.length > 1 ? `<div class="gallery__thumbs">${images.map((src,i)=>
-          `<img src="${src}" data-src="${src}" class="${i===0?'active':''}" alt="">`).join("")}</div>` : ""}
-      </div>
-      <div>
-        <div class="product__cat">${CATEGORIES[p.category].title}</div>
-        <h1 class="product__title">${p.name}</h1>
-        <div class="product__price">${money(p.price)}</div>
-        <div class="product__note">Цена указана за одно растение. Наличие и размеры уточняйте по телефону.</div>
-        <div class="product__actions">
-          <a class="btn" href="tel:+79781049236">Связаться · +7 (978) 104 92 36</a>
-          <a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Telegram</a>
-          <a class="btn btn--ghost" href="https://m.vk.ru/club238739856" target="_blank" rel="noopener">ВКонтакте</a>
-        </div>
-        <div class="contact-card" style="grid-template-columns:1fr;margin-top:26px">
-          <div>
-            <h3>Как заказать</h3>
-            <span style="opacity:.9">Позвоните нам или напишите в соцсетях — расскажем о наличии, размерах и доставке.</span>
-            <a href="tel:+79788573947" style="margin-top:10px">+7 (978) 857 39 47</a>
-            <a href="tel:+79780487204">+7 (978) 048 72 04</a>
-            <a href="mailto:darles-pitomnik@mail.ru">darles-pitomnik@mail.ru</a>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="product__desc">
-      <h2>Описание</h2>
-      ${paras}
-    </div>`;
-
-  const thumbs = main.querySelectorAll(".gallery__thumbs img");
-  thumbs.forEach(t => t.addEventListener("click", () => {
-    document.getElementById("mainImg").src = t.dataset.src;
-    thumbs.forEach(x => x.classList.remove("active"));
-    t.classList.add("active");
-  }));
-
-  document.getElementById("related").innerHTML =
-    PRODUCTS.filter(x => x.category === p.category && x.id !== p.id).slice(0, 4).map(cardHTML).join("");
-}
-</script>
+<script src="js/product-page.js"></script>
 <script src="js/assistant.js" defer></script>
 </body>
 </html>

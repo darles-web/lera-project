@@ -3,9 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <title>Питомник декоративных растений «ДарЛес» — Крым</title>
 <meta name="description" content="«ДарЛес» — первый питомник декоративных растений в Крыму. 15 га, более 400 000 растений и 350 сортов: хвойные, лиственные, многолетники.">
+<link rel="canonical" href="https://samagon90.github.io/lera-project/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Питомник «ДарЛес»">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Питомник декоративных растений «ДарЛес» — Крым">
+<meta property="og:description" content="«ДарЛес» — первый питомник декоративных растений в Крыму. 15 га, более 400 000 растений и 350 сортов.">
+<meta property="og:url" content="https://samagon90.github.io/lera-project/">
+<meta property="og:image" content="https://samagon90.github.io/lera-project/images/site/1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1d4a2c">
 <link rel="icon" href="images/site/6.jpg">
+<link rel="preload" as="image" href="images/site/1.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,14 +27,15 @@
 <link rel="stylesheet" href="css/assistant.css">
 </head>
 <body>
+<a class="skip-link" href="#about">Перейти к содержимому</a>
 
 <div id="site-header"></div>
 
 <!-- HERO -->
 <section class="hero">
   <div class="hero__bg" style="background-image:url('images/site/1.jpg')"></div>
-  <img class="hero__logo" src="images/site/5.png" alt="ДарЛес">
-  <div class="hero__scroll">питомник декоративных растений · Крым</div>
+  <img class="hero__logo" src="images/site/5.png" alt="ДарЛес — питомник декоративных растений" fetchpriority="high">
+  <h1 class="hero__scroll">Питомник декоративных растений «ДарЛес» · Крым</h1>
 </section>
 
 <!-- О НАС -->
@@ -34,7 +49,7 @@
 
     <div class="about__grid">
       <div class="about__photo">
-        <img src="images/site/2.jpg" alt="Питомник ДарЛес">
+        <img src="images/site/2.jpg" alt="Питомник ДарЛес" loading="lazy" decoding="async">
       </div>
       <div class="about__text">
         <p>Питомник <strong>«ДарЛес»</strong> — зелёный оазис в предгорном Крыму.</p>
@@ -73,14 +88,16 @@
     <p style="color:var(--gray);margin-top:22px">Каждое растение прошло адаптацию к климату предгорного Крыма
        и готово к высадке в самых разных регионах.</p>
 
-    <div class="contact-card" id="about-contacts">
-      <div><h3>Адрес</h3><span>село Давыдово,<br>трасса Донское — Кленовка</span></div>
+    <div class="contact-card" id="about-contacts" itemscope itemtype="https://schema.org/LocalBusiness">
+      <meta itemprop="name" content="Питомник декоративных растений «ДарЛес»">
+      <meta itemprop="image" content="images/site/1.jpg">
+      <div itemprop="address" itemscope itemtype="https://schema.org/PostalAddress"><h3>Адрес</h3><span><span itemprop="addressLocality">село Давыдово</span>,<br><span itemprop="streetAddress">трасса Донское — Кленовка</span></span><meta itemprop="addressRegion" content="Республика Крым"><meta itemprop="addressCountry" content="RU"></div>
       <div><h3>Телефоны</h3>
-        <a href="tel:+79781049236">+7 (978) 104 92 36</a>
+        <a itemprop="telephone" href="tel:+79781049236">+7 (978) 104 92 36</a>
         <a href="tel:+79788573947">+7 (978) 857 39 47</a>
         <a href="tel:+79780487204">+7 (978) 048 72 04</a>
       </div>
-      <div><h3>Email</h3><a href="mailto:darles-pitomnik@mail.ru">darles-pitomnik@mail.ru</a></div>
+      <div><h3>Email</h3><a itemprop="email" href="mailto:darles-pitomnik@mail.ru">darles-pitomnik@mail.ru</a></div>
     </div>
   </div>
 </section>
@@ -92,9 +109,9 @@
       <p class="lead">15 гектаров ухоженных полей и контейнерных площадок в предгорном Крыму.</p></div>
     <div class="carousel" id="nurseryCarousel" style="margin-top:44px">
       <div class="carousel__track">
-        <div class="carousel__slide"><img src="images/site/2.jpg" alt="Питомник ДарЛес — контейнерная площадка"></div>
-        <div class="carousel__slide"><img src="images/site/3.jpg" alt="Питомник ДарЛес — открытый грунт"></div>
-        <div class="carousel__slide"><img src="images/site/4.jpg" alt="Питомник ДарЛес — многолетники"></div>
+        <div class="carousel__slide"><img src="images/site/2.jpg" alt="Питомник ДарЛес — контейнерная площадка" loading="lazy" decoding="async"></div>
+        <div class="carousel__slide"><img src="images/site/3.jpg" alt="Питомник ДарЛес — открытый грунт" loading="lazy" decoding="async"></div>
+        <div class="carousel__slide"><img src="images/site/4.jpg" alt="Питомник ДарЛес — многолетники" loading="lazy" decoding="async"></div>
       </div>
       <button class="carousel__arrow carousel__arrow--prev" aria-label="Назад">‹</button>
       <button class="carousel__arrow carousel__arrow--next" aria-label="Вперёд">›</button>
@@ -122,15 +139,15 @@
     <p class="lead">Выберите раздел — и перейдёте сразу к нужной вкладке каталога.</p>
     <div class="circles">
       <a class="circle" href="catalog.html?cat=hvoynye">
-        <div class="circle__img"><img src="images/site/7.jpg" alt="Хвойные"></div>
+        <div class="circle__img"><img src="images/site/7.jpg" alt="Хвойные" loading="lazy" decoding="async"></div>
         <div class="circle__label">Хвойные</div>
       </a>
       <a class="circle" href="catalog.html?cat=listvennye">
-        <div class="circle__img"><img src="images/site/8.jpg" alt="Лиственные"></div>
+        <div class="circle__img"><img src="images/site/8.jpg" alt="Лиственные" loading="lazy" decoding="async"></div>
         <div class="circle__label">Лиственные</div>
       </a>
       <a class="circle" href="catalog.html?cat=mnogoletnie">
-        <div class="circle__img"><img src="images/site/9.jpg" alt="Многолетние"></div>
+        <div class="circle__img"><img src="images/site/9.jpg" alt="Многолетние" loading="lazy" decoding="async"></div>
         <div class="circle__label">Многолетние</div>
       </a>
     </div>
@@ -141,15 +158,7 @@
 
 <script src="js/products.js"></script>
 <script src="js/site.js"></script>
-<script>
-  renderHeader();
-  renderFooter();
-  document.getElementById("ico-tree").innerHTML = ICONS.tree;
-  document.getElementById("ico-leaf").innerHTML = ICONS.leaf;
-  document.getElementById("featured").innerHTML = PRODUCTS.slice(0, 8).map(cardHTML).join("");
-  initHeroCarousel(document.getElementById("nurseryCarousel"), 5000);
-  initRowCarousel(document.querySelector(".row-carousel"), 4000);
-</script>
+<script src="js/home.js"></script>
 <script src="js/assistant.js" defer></script>
 </body>
 </html>

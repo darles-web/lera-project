@@ -11,7 +11,10 @@
 
   /* ---------- утилиты ---------- */
   const norm = s => String(s).toLowerCase().replace(/ё/g, "е").trim();
-  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const img = s => (typeof safeImg === "function" ? safeImg(s) : String(s ?? ""));
+  const url = s => (typeof safeUrl === "function" ? safeUrl(s) : (/^https?:\/\//i.test(String(s ?? "")) ? String(s) : "#"));
+  const tel = s => "tel:" + String(s ?? "").replace(/[^\d+]/g, "");
   const money = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
   const CAT = { hvoynye: "Хвойные", listvennye: "Лиственные", mnogoletnie: "Многолетние" };
   const W = (re, s) => { const r = new RegExp("(^|[^а-яa-z])(" + re + ")", "i"); return r.test(s); };
@@ -118,10 +121,10 @@
 
   function cards(list, { max = 6, tail = "" } = {}) {
     const shown = list.slice(0, max).map(p => `
-      <a class="ai-card" href="product.html?id=${p.id}">
-        <img src="${p.image}" alt="" loading="lazy">
+      <a class="ai-card" href="product.html?id=${encodeURIComponent(p.id)}">
+        <img src="${esc(img(p.image))}" alt="" loading="lazy" decoding="async">
         <span class="ai-card__n">${esc(p.name)}</span>
-        <span class="ai-card__p">${money(p.price)}</span>
+        <span class="ai-card__p">${esc(money(p.price))}</span>
       </a>`).join("");
     const more = list.length > max
       ? `<div class="ai-more">Показал ${max} из ${list.length} — уточните запрос или откройте каталог.</div>` : "";
@@ -166,11 +169,11 @@
     if (/(телефон|позвонить|связаться|контакт|номер|адрес|почта|email|где вы|как добраться|как найти|доехать|соцсет)/.test(nq)) {
       const C = typeof CONTACTS !== "undefined" ? CONTACTS : null;
       return { html: `Вот наши контакты:<br>
-        📞 ${C ? C.phones.map(p => `<a href="tel:${p.replace(/[^\d+]/g, "")}">${p}</a>`).join(" · ") : ""}<br>
-        ✉️ <a href="mailto:${C ? C.email : ""}">${C ? C.email : ""}</a><br>
-        📍 ${C ? C.address : ""}<br>
-        💬 <a href="${C ? C.telegram : ""}" target="_blank" rel="noopener">Telegram</a> ·
-        <a href="${C ? C.vk : ""}" target="_blank" rel="noopener">ВКонтакте</a>`,
+        📞 ${C ? C.phones.map(p => `<a href="${esc(tel(p))}">${esc(p)}</a>`).join(" · ") : ""}<br>
+        ✉️ <a href="mailto:${esc(C ? C.email : "")}">${esc(C ? C.email : "")}</a><br>
+        📍 ${esc(C ? C.address : "")}<br>
+        💬 <a href="${esc(url(C && C.telegram))}" target="_blank" rel="noopener noreferrer">Telegram</a> ·
+        <a href="${esc(url(C && C.vk))}" target="_blank" rel="noopener noreferrer">ВКонтакте</a>`,
         tail: `<div class="ai-more"><a href="index.html#contacts">Все контакты →</a></div>` };
     }
 
@@ -180,7 +183,7 @@
         <b>1.</b> Выберите растение в <a href="catalog.html">каталоге</a> 🌿<br>
         <b>2.</b> Позвоните или напишите — подтвердим наличие и размеры<br>
         <b>3.</b> Заберите в питомнике или согласуем доставку<br><br>
-        ${typeof CONTACTS !== "undefined" ? `📞 <a href="tel:${CONTACTS.phones[0].replace(/[^\d+]/g, "")}">${CONTACTS.phones[0]}</a> · <a href="${CONTACTS.telegram}" target="_blank" rel="noopener">Telegram</a>` : ""}` };
+        ${typeof CONTACTS !== "undefined" ? `📞 <a href="${esc(tel(CONTACTS.phones[0]))}">${esc(CONTACTS.phones[0])}</a> · <a href="${esc(url(CONTACTS.telegram))}" target="_blank" rel="noopener noreferrer">Telegram</a>` : ""}` };
     }
 
     /* навигация по каталогу */
@@ -256,7 +259,7 @@
     /* ничего не нашли */
     return { html: `Не нашёл подходящего растения по запросу «${esc(q)}» 😔<br>
       В питомнике более 350 сортов — часть доступна под заказ. Позвоните нам, подберём!
-      ${typeof CONTACTS !== "undefined" ? `<br>📞 <a href="tel:${CONTACTS.phones[0].replace(/[^\d+]/g, "")}">${CONTACTS.phones[0]}</a>` : ""}`,
+      ${typeof CONTACTS !== "undefined" ? `<br>📞 <a href="${esc(tel(CONTACTS.phones[0]))}">${esc(CONTACTS.phones[0])}</a>` : ""}`,
       tail: `<div class="ai-more"><a href="catalog.html">Открыть весь каталог →</a></div>`,
       chips: 1 };
   }

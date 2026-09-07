@@ -8,11 +8,20 @@
 
 const CFG_KEY = "darles_admin_cfg";
 const DRAFTS_KEY = "darles_drafts";
+const TOKEN_KEY = "darles_admin_token";
 
-const cfg = Object.assign(
-  { repo: "samagon90/lera-project", branch: "main", token: "" },
-  JSON.parse(localStorage.getItem(CFG_KEY) || "{}")
-);
+/* Токен НЕ хранится в localStorage: только в памяти вкладки (sessionStorage),
+   и только если владелец явно поставил галочку «запомнить до закрытия вкладки».
+   Это заметно снижает риск кражи токена сторонним скриптом или на чужом компьютере. */
+function readCfg() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(CFG_KEY) || "{}"); } catch { saved = {}; }
+  delete saved.token; // старые версии могли сохранить токен — удаляем
+  let token = "";
+  try { token = sessionStorage.getItem(TOKEN_KEY) || ""; } catch {}
+  return Object.assign({ repo: "samagon90/lera-project", branch: "main", token: "" }, saved, { token });
+}
+const cfg = readCfg();
 
 let ghOK = false;          // подключён ли GitHub
 let ghPush = false;        // есть ли право на запись
@@ -24,8 +33,8 @@ let drafts = loadDrafts();
 /* Утилиты                                                             */
 /* ------------------------------------------------------------------ */
 const $ = id => document.getElementById(id);
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const money = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
+/* esc() и money() приходят из js/site.js — не переобъявляем, чтобы не ломать страницу */
+
 
 function utf8b64(str) {
   const bytes = new TextEncoder().encode(str);
@@ -37,7 +46,12 @@ function utf8b64(str) {
 const b64part = dataURL => dataURL.split(",")[1];
 
 function saveCfg() {
-  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+  const { token, ...rest } = cfg;
+  localStorage.setItem(CFG_KEY, JSON.stringify(rest));
+  try {
+    if (token && $("cfgRemember")?.checked) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {}
 }
 
 function loadDrafts() {
@@ -62,8 +76,13 @@ function logLine(cls, text, html = false) {
 /* ------------------------------------------------------------------ */
 /* GitHub API                                                          */
 /* ------------------------------------------------------------------ */
+const REPO_RE = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
+const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,100}$/;
+
 async function gh(path, { method = "GET", body } = {}) {
-  const headers = { Accept: "application/vnd.github+json" };
+  if (!REPO_RE.test(cfg.repo)) throw new Error("некорректное имя репозитория (нужно вида владелец/репозиторий)");
+  if (!BRANCH_RE.test(cfg.branch)) throw new Error("некорректное имя ветки");
+  const headers = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
   if (cfg.token) headers.Authorization = "Bearer " + cfg.token;
   const res = await fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
     method, headers,
@@ -126,14 +145,80 @@ async function ghDeleteFile(path, sha, message) {
 /* ------------------------------------------------------------------ */
 /* Разбор и сборка js/products.js                                      */
 /* ------------------------------------------------------------------ */
+/* Разбор списка PRODUCTS БЕЗ eval/new Function: файл с GitHub исполнять нельзя —
+   если в репозиторий попадёт вредоносный код, он выполнился бы в админке с токеном. */
 function parseProductsJS(text) {
   const m = text.match(/const\s+PRODUCTS\s*=\s*\[([\s\S]*?)\n\];/);
   if (!m) throw new Error("Не удалось найти список PRODUCTS в файле");
-  try {
-    return new Function("return [" + m[1] + "]")();
-  } catch (e) {
-    throw new Error("Файл products.js не разобрался: " + e.message);
+  const body = m[1];
+  const out = [];
+  // делим на блоки верхнего уровня { ... }
+  let depth = 0, start = -1, inStr = null, esc0 = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inStr) {
+      if (esc0) esc0 = false;
+      else if (ch === "\\") esc0 = true;
+      else if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; continue; }
+    if (ch === "{") { if (depth === 0) start = i; depth++; }
+    else if (ch === "}") { depth--; if (depth === 0 && start >= 0) { out.push(body.slice(start + 1, i)); start = -1; } }
   }
+  if (!out.length) throw new Error("В файле products.js не найдено ни одного растения");
+  return out.map(parseProductBlock);
+}
+
+function readJSLiteral(src, from) {
+  // возвращает { value, end } для строки в кавычках/бэктиках, числа или массива строк
+  let i = from;
+  while (i < src.length && /\s/.test(src[i])) i++;
+  const q = src[i];
+  if (q === '"' || q === "'" || q === "`") {
+    let out = "", esc1 = false;
+    for (i++; i < src.length; i++) {
+      const c = src[i];
+      if (esc1) {
+        out += ({ n: "\n", t: "\t", r: "\r" }[c] ?? c);
+        esc1 = false;
+      } else if (c === "\\") esc1 = true;
+      else if (c === q) return { value: out, end: i + 1 };
+      else out += c;
+    }
+    throw new Error("незакрытая строка в products.js");
+  }
+  if (q === "[") {
+    const close = src.indexOf("]", i);
+    if (close < 0) throw new Error("незакрытый массив в products.js");
+    const inner = src.slice(i + 1, close);
+    const arr = [...inner.matchAll(/"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g)]
+      .map(mm => (mm[1] ?? mm[2]).replace(/\\(.)/g, "$1"));
+    return { value: arr, end: close + 1 };
+  }
+  const num = /^-?\d+(?:\.\d+)?/.exec(src.slice(i));
+  if (num) return { value: Number(num[0]), end: i + num[0].length };
+  const kw = /^(true|false|null)/.exec(src.slice(i));
+  if (kw) return { value: { true: true, false: false, null: null }[kw[0]], end: i + kw[0].length };
+  throw new Error("неизвестное значение в products.js");
+}
+
+function parseProductBlock(block) {
+  const obj = {};
+  const keyRe = /(?:^|[,\s])(id|name|category|price|image|gallery|short|description)\s*:/g;
+  let m2;
+  while ((m2 = keyRe.exec(block))) {
+    const { value, end } = readJSLiteral(block, m2.index + m2[0].length);
+    obj[m2[1]] = value;
+    keyRe.lastIndex = end;
+  }
+  if (obj.id == null || !obj.name) throw new Error("растение без id или названия в products.js");
+  return {
+    id: Number(obj.id), name: String(obj.name),
+    category: String(obj.category || "hvoynye"), price: Number(obj.price) || 0,
+    image: String(obj.image || ""), gallery: Array.isArray(obj.gallery) ? obj.gallery : [],
+    short: String(obj.short || ""), description: String(obj.description || "")
+  };
 }
 
 const FILE_HEADER = `/* =====================================================================
@@ -279,10 +364,14 @@ function initDropzone() {
 }
 function closestToForm(el) { return !el || !el.classList || !el.closest("textarea, input"); }
 
+const MAX_UPLOAD = 12 * 1024 * 1024; // 12 МБ на файл
+
 async function addFiles(files) {
   for (const f of files) {
+    if (!f.type.startsWith("image/")) { logLine("err", `«${f.name}» — это не изображение, пропускаю.`); continue; }
+    if (f.size > MAX_UPLOAD) { logLine("err", `«${f.name}» слишком большой (${(f.size / 1048576).toFixed(1)} МБ, максимум 12 МБ).`); continue; }
     try {
-      logLine("", `Обрабатываю фото «${f.name}»…`);
+      logLine("", `Обрабатываю фото «${String(f.name).slice(0, 80)}»…`);
       let dataURL;
       if ($("optTrim").checked) {
         const blob = await normalizeImage(f, true);
@@ -318,7 +407,7 @@ function openEditor(i) {
 function renderThumbs() {
   $("dzThumbs").innerHTML = photos.map((p, i) => `
     <div class="dz-thumb ${i === 0 ? "dz-thumb--main" : ""}">
-      <img src="${p.dataURL}" alt="">
+      <img src="${p.dataURL.startsWith("data:image/") ? p.dataURL : ""}" alt="">
       <button class="dz-thumb__edit" type="button" data-i="${i}" title="Редактировать: фон, выравнивание">✏️</button>
       <button class="dz-thumb__x" type="button" data-i="${i}" title="Убрать">✕</button>
     </div>`).join("");
@@ -348,10 +437,11 @@ function collectForm() {
 
 function renderPreview() {
   const f = collectForm();
-  const img = photos[0]?.dataURL || "images/site/7.jpg";
+  const raw = photos[0]?.dataURL;
+  const img = raw && raw.startsWith("data:image/") ? raw : "images/site/7.jpg";
   const cat = { hvoynye: "Хвойные", listvennye: "Лиственные", mnogoletnie: "Многолетние" }[f.category];
   $("preview").innerHTML = `
-    <a class="card" href="javascript:void(0)">
+    <div class="card">
       <div class="card__img"><img src="${img}" alt=""><span class="card__tag">${cat}</span></div>
       <div class="card__body">
         <div class="card__name">${esc(f.name) || "Название растения"}</div>
@@ -361,7 +451,7 @@ function renderPreview() {
           <span class="card__more">Подробнее →</span>
         </div>
       </div>
-    </a>
+    </div>
     <p class="muted small" style="margin-top:14px">${photos.length > 1 ? `Будет загружено фото: ${photos.length} (первое — главное).` : "Главное фото карточки — слева вверху."}</p>`;
 }
 ["fName", "fCategory", "fPrice", "fShort", "fDesc"].forEach(id =>
@@ -413,10 +503,10 @@ function renderTable() {
     }
     const p = r.p;
     return `<div class="prow">
-      <img src="${p.image}" alt="" loading="lazy">
+      <img src="${esc(typeof safeImg === "function" ? safeImg(p.image) : p.image)}" alt="" loading="lazy">
       <div>
         <div class="prow__name">${esc(p.name)}</div>
-        <div class="prow__meta">${catTitle(p.category)} · ${money(p.price)} · id ${p.id}${(p.gallery || []).length ? ` · фото: ${p.gallery.length + 1}` : ""}</div>
+        <div class="prow__meta">${catTitle(p.category)} · ${esc(money(p.price))} · id ${p.id}${(p.gallery || []).length ? ` · фото: ${p.gallery.length + 1}` : ""}</div>
       </div>
       <div class="prow__actions">
         <button class="prow__btn" data-act="edit" data-id="${p.id}">Изменить</button>
@@ -462,17 +552,17 @@ function startEdit(id) {
 
 function cardMarkup(p) {
   const cat = catTitle(p.category);
-  return `<a class="card" href="javascript:void(0)">
-    <div class="card__img"><img src="${p.image}" alt=""><span class="card__tag">${cat}</span></div>
+  return `<div class="card">
+    <div class="card__img"><img src="${esc(typeof safeImg === "function" ? safeImg(p.image) : p.image)}" alt=""><span class="card__tag">${cat}</span></div>
     <div class="card__body">
       <div class="card__name">${esc(p.name)}</div>
       <div class="card__short">${esc(p.short || "")}</div>
       <div class="card__bottom">
-        <span class="card__price">${money(p.price)}</span>
+        <span class="card__price">${esc(money(p.price))}</span>
         <span class="card__more">Подробнее →</span>
       </div>
     </div>
-  </a>`;
+  </div>`;
 }
 
 function loadDraftToForm(i) {
@@ -558,7 +648,7 @@ async function publish() {
     logLine("ok", editingId != null
       ? `Готово! Изменения появятся на сайте через 1–2 минуты.`
       : `Готово! «${f.name}» появилось на сайте (через 1–2 минуты, пока пересобирается GitHub Pages).`);
-    logLine("", `<a href="catalog.html?cat=${f.category}" target="_blank">Открыть каталог →</a>`, true);
+    logLine("", `<a href="catalog.html?cat=${encodeURIComponent(f.category)}" target="_blank" rel="noopener noreferrer">Открыть каталог →</a>`, true);
 
     resetForm();
     // обновляем локальную копию для таблицы
@@ -700,7 +790,10 @@ $("btnSaveCfg").addEventListener("click", async () => {
   await checkConnection(false);
 });
 $("btnForget").addEventListener("click", async () => {
-  cfg.token = ""; saveCfg();
+  cfg.token = "";
+  $("cfgRemember").checked = false;
+  try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+  saveCfg();
   $("cfgToken").value = "";
   await checkConnection(false);
 });
@@ -713,6 +806,7 @@ initDropzone();
 $("cfgRepo").value = cfg.repo;
 $("cfgBranch").value = cfg.branch;
 $("cfgToken").value = cfg.token;
+try { $("cfgRemember").checked = !!sessionStorage.getItem(TOKEN_KEY); } catch {}
 renderPreview();
 renderTable();
 checkConnection();

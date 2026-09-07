@@ -9,7 +9,26 @@ const CONTACTS = {
   vk: "https://m.vk.ru/club238739856"
 };
 
-const telHref = p => "tel:" + p.replace(/[^\d+]/g, "");
+const telHref = p => "tel:" + String(p).replace(/[^\d+]/g, "");
+
+/* Экранирование пользовательских/каталожных данных перед вставкой в HTML.
+   Защищает от XSS, если в описание растения попадёт разметка. */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* Безопасный путь к картинке: только относительные пути внутри images/ */
+function safeImg(src) {
+  const s = String(src ?? "");
+  return /^images\/[A-Za-z0-9._\-\/]+$/.test(s) && !s.includes("..") ? s : "images/site/6.jpg";
+}
+
+/* Безопасная внешняя ссылка: только http(s) */
+function safeUrl(u) {
+  const s = String(u ?? "");
+  return /^https?:\/\//i.test(s) ? s : "#";
+}
 const money = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
 
 /* базовый путь: страницы товара лежат в /product.html в корне, так что префикс всегда "" */
@@ -31,7 +50,7 @@ function renderHeader(active) {
   <div class="topbar">
     <div class="wrap topbar__in">
       <a class="topbar__logo" href="index.html">
-        <img src="images/site/6.jpg" alt="ДарЛес — питомник декоративных растений">
+        <img src="images/site/6.jpg" alt="ДарЛес — питомник декоративных растений" width="40" height="40" decoding="async">
         <span>ДарЛес</span>
       </a>
       <nav class="topbar__nav">
@@ -42,13 +61,13 @@ function renderHeader(active) {
       </nav>
       <div class="topbar__contacts">
         <div class="phones" id="phones">
-          <button class="phones__btn" type="button" aria-label="Телефоны">
+          <button class="phones__btn" type="button" aria-label="Телефоны" aria-expanded="false">
             ${ICONS.phone}<span>${CONTACTS.phones[0]}</span> ▾
           </button>
           <div class="phones__list">${phoneItems}</div>
         </div>
-        <a class="mail" href="mailto:${CONTACTS.email}">${CONTACTS.email}</a>
-        <button class="burger" id="burger" type="button" aria-label="Меню">
+        <a class="mail" href="mailto:${esc(CONTACTS.email)}">${esc(CONTACTS.email)}</a>
+        <button class="burger" id="burger" type="button" aria-label="Меню" aria-expanded="false" aria-controls="drawer">
           <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
         </button>
       </div>
@@ -58,15 +77,28 @@ function renderHeader(active) {
     <a href="index.html#about">О питомнике</a>
     <a href="catalog.html">Каталог</a>
     <a href="index.html#categories">Категории</a>
-    <a href="mailto:${CONTACTS.email}">${CONTACTS.email}</a>
+    <a href="mailto:${esc(CONTACTS.email)}">${esc(CONTACTS.email)}</a>
     <a href="index.html#contacts">Контакты</a>
   </nav>`;
   const ph = document.getElementById("phones");
-  ph.querySelector(".phones__btn").addEventListener("click", e => { e.stopPropagation(); ph.classList.toggle("open"); });
-  document.addEventListener("click", () => ph.classList.remove("open"));
+  const phBtn = ph.querySelector(".phones__btn");
+  phBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    phBtn.setAttribute("aria-expanded", String(ph.classList.toggle("open")));
+  });
+  document.addEventListener("click", () => { ph.classList.remove("open"); phBtn.setAttribute("aria-expanded", "false"); });
   const burger = document.getElementById("burger"), drawer = document.getElementById("drawer");
-  burger.addEventListener("click", e => { e.stopPropagation(); drawer.classList.toggle("open"); });
-  drawer.addEventListener("click", () => drawer.classList.remove("open"));
+  burger.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = drawer.classList.toggle("open");
+    burger.setAttribute("aria-expanded", String(open));
+  });
+  drawer.addEventListener("click", () => { drawer.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    drawer.classList.remove("open"); burger.setAttribute("aria-expanded", "false");
+    ph.classList.remove("open");
+  });
 }
 
 function renderFooter() {
@@ -75,18 +107,18 @@ function renderFooter() {
   <footer class="footer" id="contacts">
     <div class="wrap footer__grid">
       <div>
-        <img class="footer__logo" src="images/site/5.png" alt="ДарЛес">
+        <img class="footer__logo" src="images/site/5.png" alt="ДарЛес" loading="lazy" decoding="async">
         <p>Первый питомник декоративных растений в Крыму. 15 га, более 400 000 растений и 350 сортов.</p>
         <div class="socials">
-          <a class="social" href="${CONTACTS.telegram}" target="_blank" rel="noopener" aria-label="Telegram">${ICONS.tg}</a>
-          <a class="social" href="${CONTACTS.vk}" target="_blank" rel="noopener" aria-label="ВКонтакте">${ICONS.vk}</a>
+          <a class="social" href="${esc(safeUrl(CONTACTS.telegram))}" target="_blank" rel="noopener noreferrer" aria-label="Telegram">${ICONS.tg}</a>
+          <a class="social" href="${esc(safeUrl(CONTACTS.vk))}" target="_blank" rel="noopener noreferrer" aria-label="ВКонтакте">${ICONS.vk}</a>
         </div>
       </div>
       <div>
         <h4>Телефоны</h4>
         ${phones}
         <h4 style="margin-top:22px">Email</h4>
-        <a href="mailto:${CONTACTS.email}">${CONTACTS.email}</a>
+        <a href="mailto:${esc(CONTACTS.email)}">${esc(CONTACTS.email)}</a>
       </div>
       <div>
         <h4>Адрес</h4>
@@ -106,16 +138,16 @@ function renderFooter() {
 }
 
 function cardHTML(p) {
-  return `<a class="card" href="product.html?id=${p.id}">
+  return `<a class="card" href="product.html?id=${encodeURIComponent(p.id)}">
     <div class="card__img">
-      <img src="${p.image}" alt="${p.name}" loading="lazy">
-      <span class="card__tag">${CATEGORIES[p.category]?.title || ""}</span>
+      <img src="${esc(safeImg(p.image))}" alt="${esc(p.name)}" loading="lazy" decoding="async">
+      <span class="card__tag">${esc(CATEGORIES[p.category]?.title || "")}</span>
     </div>
     <div class="card__body">
-      <div class="card__name">${p.name}</div>
-      <div class="card__short">${p.short || ""}</div>
+      <div class="card__name">${esc(p.name)}</div>
+      <div class="card__short">${esc(p.short || "")}</div>
       <div class="card__bottom">
-        <span class="card__price">${money(p.price)}</span>
+        <span class="card__price">${esc(money(p.price))}</span>
         <span class="card__more">Подробнее →</span>
       </div>
     </div>

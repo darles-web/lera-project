@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.github.com">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <title>Админ-панель — питомник «ДарЛес»</title>
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="images/site/6.jpg">
@@ -39,12 +42,16 @@
       </label>
     </div>
     <label>Токен GitHub <span class="muted">(fine-grained, право Contents: Read and write — только для этого репозитория)</span>
-      <input id="cfgToken" type="password" placeholder="github_pat_…" autocomplete="off">
+      <input id="cfgToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
     </label>
+    <label class="check"><input type="checkbox" id="cfgRemember">
+      Запомнить токен до закрытия вкладки (иначе вводится заново при каждом входе)</label>
+    <p class="muted small"><b>Безопасность:</b> токен не сохраняется на диск браузера и не попадает в репозиторий.
+      Выдавайте ему доступ только к этому репозиторию и только Contents: Read and write, а после работы
+      нажимайте «Забыть токен». Не открывайте админ-панель на чужом компьютере.</p>
     <p class="muted small">Как получить токен: github.com → Settings → Developer settings →
       Fine-grained tokens → Generate new token → в «Repository access» выберите только lera-project,
-      в Permissions → Contents → Read and write. Токен хранится только в вашем браузере и никому не передаётся,
-      кроме GitHub. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Открыть страницу токенов →</a></p>
+      в Permissions → Contents → Read and write. Токен передаётся только на api.github.com и никуда больше. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Открыть страницу токенов →</a></p>
     <div class="btn-row">
       <button class="btn btn--sm" id="btnSaveCfg" type="button">Сохранить и проверить</button>
       <button class="btn btn--ghost btn--sm" id="btnForget" type="button">Забыть токен</button>
@@ -131,6 +138,6 @@
 <script src="js/site.js"></script>
 <script src="js/photo-editor.js"></script>
 <script src="js/admin.js"></script>
-<script>renderHeader("admin"); renderFooter();</script>
+<script src="js/admin-page.js"></script>
 </body>
 </html>

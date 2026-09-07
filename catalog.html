@@ -3,28 +3,44 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <title>Каталог растений — питомник «ДарЛес»</title>
 <meta name="description" content="Каталог питомника «ДарЛес»: хвойные, лиственные и многолетние декоративные растения с ценами.">
+<link rel="canonical" href="https://samagon90.github.io/lera-project/catalog.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Питомник «ДарЛес»">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Каталог растений — питомник «ДарЛес»">
+<meta property="og:description" content="Каталог питомника «ДарЛес»: хвойные, лиственные и многолетние растения с ценами.">
+<meta property="og:url" content="https://samagon90.github.io/lera-project/catalog.html">
+<meta property="og:image" content="https://samagon90.github.io/lera-project/images/site/2.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#1d4a2c">
 <link rel="icon" href="images/site/6.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/assistant.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
 <div id="site-header"></div>
 
 <section class="page-head">
   <div class="wrap center">
     <div class="crumbs"><a href="index.html">Главная</a> / Каталог</div>
-    <h2>Каталог растений</h2>
+    <h1>Каталог растений</h1>
     <p class="lead">Выберите категорию. Цены указаны за одно растение. Для заказа — позвоните нам или напишите в соцсетях.</p>
     <div class="tabs" id="tabs"></div>
   </div>
 </section>
 
-<section class="wrap">
+<section class="wrap" id="main">
   <div class="toolbar">
-    <input id="search" type="search" placeholder="Поиск по названию, например: туя">
+    <label for="search" class="visually-hidden">Поиск растений</label>
+    <input id="search" type="search" placeholder="Поиск по названию, например: туя" autocomplete="off">
+    <label for="sort" class="visually-hidden">Сортировка</label>
     <select id="sort">
       <option value="default">Сортировка: по умолчанию</option>
       <option value="price-asc">Сначала дешевле</option>
@@ -33,7 +49,7 @@
     </select>
     <span class="count" id="count"></span>
   </div>
-  <div class="grid" id="grid"></div>
+  <div class="grid" id="grid" aria-live="polite"></div>
   <div class="empty" id="empty" style="display:none">Ничего не найдено. Попробуйте изменить запрос.</div>
 </section>
 
@@ -43,7 +59,7 @@
     <p class="lead">В питомнике более 350 сортов — часть ассортимента доступна под заказ. Позвоните, и мы подберём.</p>
     <div style="margin-top:26px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
       <a class="btn" href="tel:+79781049236">Позвонить</a>
-      <a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Написать в Telegram</a>
+      <a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener noreferrer">Написать в Telegram</a>
     </div>
   </div>
 </section>
@@ -52,41 +68,7 @@
 
 <script src="js/products.js"></script>
 <script src="js/site.js"></script>
-<script>
-renderHeader(); renderFooter();
-
-const params = new URLSearchParams(location.search);
-let current = params.get("cat") && CATEGORIES[params.get("cat")] ? params.get("cat") : "hvoynye";
-
-const tabsEl = document.getElementById("tabs");
-tabsEl.innerHTML = Object.entries(CATEGORIES).map(([key, c]) =>
-  `<button class="tab" data-cat="${key}"><img src="${c.icon}" alt="${c.title}">${c.title}</button>`).join("");
-
-tabsEl.addEventListener("click", e => {
-  const b = e.target.closest(".tab"); if (!b) return;
-  current = b.dataset.cat;
-  history.replaceState(null, "", "?cat=" + current);
-  render();
-});
-document.getElementById("search").addEventListener("input", render);
-document.getElementById("sort").addEventListener("change", render);
-
-function render() {
-  [...tabsEl.children].forEach(t => t.classList.toggle("active", t.dataset.cat === current));
-  const q = document.getElementById("search").value.trim().toLowerCase();
-  let list = PRODUCTS.filter(p => p.category === current);
-  if (q) list = list.filter(p => (p.name + " " + (p.short || "")).toLowerCase().includes(q));
-  const s = document.getElementById("sort").value;
-  if (s === "price-asc") list.sort((a, b) => a.price - b.price);
-  if (s === "price-desc") list.sort((a, b) => b.price - a.price);
-  if (s === "name") list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  document.getElementById("grid").innerHTML = list.map(cardHTML).join("");
-  document.getElementById("empty").style.display = list.length ? "none" : "block";
-  document.getElementById("count").textContent = list.length + " " +
-    (list.length % 10 === 1 && list.length % 100 !== 11 ? "растение" : "растений");
-}
-render();
-</script>
+<script src="js/catalog-page.js"></script>
 <script src="js/assistant.js" defer></script>
 </body>
 </html>
