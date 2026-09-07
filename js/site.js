@@ -11,6 +11,24 @@ const CONTACTS = {
 
 const telHref = p => "tel:" + p.replace(/[^\d+]/g, "");
 const money = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
+const num = n => new Intl.NumberFormat("ru-RU").format(n);
+
+/* Заглушка для растений, у которых фото ещё не добавили в админ-панели */
+const NO_PHOTO = "images/site/no-photo.svg";
+const prodImage = p => (p && p.image) ? p.image : NO_PHOTO;
+
+/* Есть ли растение в продаже: выключатель «наличие» + количество */
+const inStock = p => p.available !== false && (p.stock == null || Number(p.stock) > 0);
+
+/* Наличие: stock — число штук, null/undefined — «уточняйте» */
+function stockInfo(p) {
+  if (p && p.available === false) return { cls: "stock--no", text: "Нет в наличии", short: "нет" };
+  const s = p ? p.stock : null;
+  if (s == null || s === "") return { cls: "stock--ask", text: "Наличие: уточняйте", short: "уточняйте" };
+  if (Number(s) <= 0) return { cls: "stock--no", text: "Под заказ", short: "под заказ" };
+  if (Number(s) < 30) return { cls: "stock--few", text: `Осталось ${num(s)} шт`, short: `${num(s)} шт` };
+  return { cls: "stock--yes", text: `В наличии: ${num(s)} шт`, short: `${num(s)} шт` };
+}
 
 /* базовый путь: страницы товара лежат в /product.html в корне, так что префикс всегда "" */
 const ICONS = {
@@ -37,6 +55,7 @@ function renderHeader(active) {
       <nav class="topbar__nav">
         <a href="index.html#about">О питомнике</a>
         <a href="catalog.html">Каталог</a>
+        <a href="nalichie.html">Наличие и цены</a>
         <a href="index.html#categories">Категории</a>
         <a href="index.html#contacts">Контакты</a>
       </nav>
@@ -57,6 +76,7 @@ function renderHeader(active) {
   <nav class="drawer" id="drawer">
     <a href="index.html#about">О питомнике</a>
     <a href="catalog.html">Каталог</a>
+    <a href="nalichie.html">Наличие и цены</a>
     <a href="index.html#categories">Категории</a>
     <a href="mailto:${CONTACTS.email}">${CONTACTS.email}</a>
     <a href="index.html#contacts">Контакты</a>
@@ -95,6 +115,7 @@ function renderFooter() {
         <a href="catalog.html?cat=hvoynye">Хвойные</a>
         <a href="catalog.html?cat=listvennye">Лиственные</a>
         <a href="catalog.html?cat=mnogoletnie">Многолетние</a>
+        <a href="nalichie.html">Наличие и цены</a>
       </div>
     </div>
     <div class="wrap footer__bottom">
@@ -106,20 +127,23 @@ function renderFooter() {
 
 function cardHTML(p) {
   const out = p.available === false;
+  const st = stockInfo(p);
+  const size = p.size || "";
   return `<a class="card${out ? " card--out" : ""}" href="product.html?id=${p.id}">
     <div class="card__img">
-      <img src="${p.image}" alt="${p.name}" loading="lazy">
+      <img src="${prodImage(p)}" alt="${p.name}" loading="lazy">
       <span class="card__tag">${CATEGORIES[p.category]?.title || ""}</span>
-      ${out ? '<span class="card__out">Нет в наличии</span>' : ""}
+      ${out ? '<span class="card__out">Нет в наличии</span>'
+            : (size ? `<span class="card__size" title="Размер контейнера">${size}</span>` : "")}
     </div>
     <div class="card__body">
       <div class="card__name">${p.name}</div>
-      <div class="card__short">${p.short || ""}</div>
+      <div class="card__short">${p.short || (size ? "Контейнер " + size : "")}</div>
       <div class="card__bottom">
         ${out
           ? '<span class="card__price card__price--out">Нет в наличии</span>'
           : `<span class="card__price">${money(p.price)}</span>`}
-        <span class="card__more">${out ? "Смотреть →" : "Подробнее →"}</span>
+        <span class="card__stock ${st.cls}">${st.text}</span>
       </div>
     </div>
   </a>`;

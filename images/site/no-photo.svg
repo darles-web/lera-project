@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400" role="img" aria-label="Фото скоро появится">
+  <rect width="300" height="400" fill="#f4f6f4"/>
+  <g fill="#c9d5c9">
+    <path d="M150 120c-38 8-47 34-56 57l8 1 4-10c22 1 43-12 52-48 2-10 4-19 4-19s-6 8-12 19z"/>
+    <circle cx="150" cy="112" r="3"/>
+  </g>
+  <text x="150" y="232" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#7c8a7c">Фото скоро</text>
+  <text x="150" y="258" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="14" fill="#9aa79a">появится в каталоге</text>
+</svg>

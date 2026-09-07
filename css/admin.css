@@ -199,3 +199,17 @@
   .ptable__actions{justify-content:flex-start}
   .ptable__price{max-width:100%}
 }
+
+/* ===== РАЗМЕР И КОЛИЧЕСТВО В ТАБЛИЦЕ ===== */
+.ptable__size,.ptable__stock{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;color:var(--black);width:100%}
+.ptable__size{max-width:100px;text-transform:uppercase}
+.ptable__stock{max-width:110px;text-align:right;font-weight:600}
+.ptable__size:focus,.ptable__stock:focus{outline:2px solid var(--green-soft);outline-offset:1px;border-color:var(--green-soft)}
+.ptable__c-size{width:110px}
+.ptable__c-stock{width:130px}
+.tag-todo{display:inline-block;background:#f1f2f1;color:#6b7370;font-size:11px;font-weight:700;
+  padding:2px 9px;border-radius:999px;margin-left:8px;vertical-align:middle;letter-spacing:.03em}
+@media(max-width:900px){
+  .ptable__size,.ptable__stock{max-width:100%}
+}

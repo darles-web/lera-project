@@ -119,9 +119,9 @@
   function cards(list, { max = 6, tail = "" } = {}) {
     const shown = list.slice(0, max).map(p => `
       <a class="ai-card" href="product.html?id=${p.id}">
-        <img src="${p.image}" alt="" loading="lazy">
+        <img src="${prodImage(p)}" alt="" loading="lazy">
         <span class="ai-card__n">${esc(p.name)}</span>
-        <span class="ai-card__p">${money(p.price)}</span>
+        <span class="ai-card__p">${money(p.price)}${p.size ? ` · ${p.size}` : ""}</span>
       </a>`).join("");
     const more = list.length > max
       ? `<div class="ai-more">Показал ${max} из ${list.length} — уточните запрос или откройте каталог.</div>` : "";

@@ -249,3 +249,47 @@ h3{font-size:20px}
   .page-head--catalog .tab img{width:32px;height:32px}
   .toolbar{margin:12px 0 6px}
 }
+
+/* ---------- РАЗМЕР И НАЛИЧИЕ (карточка, товар, таблица) ---------- */
+.card__size{position:absolute;top:12px;right:12px;background:rgba(20,26,22,.82);color:#fff;font-size:12px;
+  padding:5px 11px;border-radius:999px;font-weight:600;letter-spacing:.04em}
+.card__stock{font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.stock{display:inline-block;font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;white-space:nowrap}
+.stock--yes{background:#e8f4ea;color:#1f6b38}
+.stock--few{background:#fff4e0;color:#9a6700}
+.stock--no{background:#f1f2f1;color:#6b7370}
+.stock--ask{background:#f1f2f1;color:#6b7370}
+.card__stock.stock--yes{background:#e8f4ea;color:#1f6b38}
+.card__stock.stock--few{background:#fff4e0;color:#9a6700}
+.card__stock.stock--no,.card__stock.stock--ask{background:#f1f2f1;color:#6b7370}
+
+.product__facts{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.product__facts .fact{background:var(--gray-light);border:1px solid var(--line);border-radius:999px;
+  padding:7px 16px;font-size:14px;color:var(--black)}
+.product__facts .fact b{font-weight:600;color:var(--gray)}
+.product__facts .fact.stock{border:0}
+
+/* ---------- ТАБЛИЦА НАЛИЧИЯ ---------- */
+.check--inline{display:inline-flex;align-items:center;gap:9px;font-size:14px;color:var(--gray);cursor:pointer}
+.check--inline input{width:17px;height:17px;accent-color:var(--green)}
+.pricetable-wrap{margin:22px 0 40px;border:1px solid var(--line);border-radius:var(--radius);overflow:auto}
+.pricetable{width:100%;border-collapse:collapse;background:#fff;font-size:15px}
+.pricetable th,.pricetable td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--line)}
+.pricetable thead th{position:sticky;top:0;background:var(--gray-light);color:var(--gray);font-size:13px;
+  text-transform:uppercase;letter-spacing:.08em;z-index:2}
+.pricetable tbody tr:hover{background:#fafbfa}
+.pricetable tbody tr:last-child td{border-bottom:0}
+.pricetable a{font-weight:500}
+.pricetable a:hover{color:var(--green);text-decoration:underline}
+.pricetable .th-num{text-align:right}
+.pricetable .td-price{font-weight:700;color:var(--green);white-space:nowrap}
+.pricetable .td-cat{color:var(--gray);font-size:14px}
+.th-sort{cursor:pointer;user-select:none}
+.th-sort:hover{color:var(--green)}
+.th-sort.sorted{color:var(--green)}
+.th-sort.sorted::after{content:" ↕";font-size:11px}
+@media(max-width:700px){
+  .pricetable th,.pricetable td{padding:11px 12px;font-size:14px}
+  .pricetable .td-cat{display:none}
+  .pricetable thead th:nth-child(2){display:none}
+}

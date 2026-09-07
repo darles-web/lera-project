@@ -42,9 +42,12 @@ if (!p) {
     + '<p style="margin-top:14px"><a class="btn" href="catalog.html">Вернуться в каталог</a></p></div>';
 } else {
   document.title = p.name + " — питомник «ДарЛес»";
-  const images = [p.image, ...(p.gallery || [])];
-  const paras = p.description.split(/\n\s*\n/)
-    .map(t => "<p>" + escHTML(t.trim()) + "</p>").join("");
+  const images = [prodImage(p), ...(p.gallery || [])];
+  const st = stockInfo(p);
+  const paras = String(p.description || "").trim()
+    ? p.description.split(/\n\s*\n/).map(t => "<p>" + escHTML(t.trim()) + "</p>").join("")
+    : '<p class="muted">Подробное описание этого растения скоро появится. '
+      + 'Характеристики, размеры и рекомендации по посадке с удовольствием расскажем по телефону.</p>';
 
   const catTitle = escHTML(CATEGORIES[p.category].title);
   const catKey = escHTML(p.category);
@@ -75,7 +78,11 @@ if (!p) {
     +   '<h1 class="product__title">' + pname + '</h1>'
     +   (p.available === false ? '<div class="product__out">Нет в наличии</div>' : '')
     +   '<div class="product__price">' + price + '</div>'
-    +     '<div class="product__note">Цена указана за одно растение. Наличие и размеры уточняйте по телефону.</div>'
+    +   '<div class="product__facts">'
+    +     (p.size ? '<span class="fact"><b>Размер:</b> контейнер ' + escHTML(p.size) + '</span>' : '')
+    +     '<span class="fact stock ' + st.cls + '">' + st.text + '</span>'
+    +   '</div>'
+    +     '<div class="product__note">Розничная цена за одно растение. Наличие меняется — перед приездом уточняйте по телефону.</div>'
     +     '<div class="product__actions">'
     +       '<a class="btn" href="tel:+79781049236">Связаться · +7 (978) 104 92 36</a>'
     +       '<a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Telegram</a>'

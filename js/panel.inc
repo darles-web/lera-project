@@ -149,8 +149,18 @@
             <option value="mnogoletnie">Многолетние</option>
           </select>
         </label>
-        <label>Цена, ₽ * <span class="muted">(только цифры)</span>
+        <label>Розничная цена, ₽ * <span class="muted">(только цифры)</span>
           <input id="fPrice" type="number" min="0" step="50" placeholder="1300">
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label>Размер (контейнер)
+          <input id="fSize" type="text" list="sizeList" placeholder="C3" autocomplete="off">
+          <datalist id="sizeList"></datalist>
+        </label>
+        <label>Количество в наличии, шт <span class="muted">(пусто = «уточняйте»)</span>
+          <input id="fStock" type="number" min="0" step="1" placeholder="100">
         </label>
       </div>
 
@@ -186,7 +196,10 @@
 
   <!-- ================= КАТАЛОГ (таблица) ================= -->
   <section class="panel" style="margin-top:34px">
-    <h3>Каталог товаров <span class="muted small" id="prodCount"></span></h3>
+    <h3>Каталог и наличие <span class="muted small" id="prodCount"></span></h3>
+    <p class="muted small">Цену, размер контейнера и количество можно править прямо в таблице —
+      изменение уходит на сайт сразу после того, как вы выйдете из поля.
+      Кнопка «Изменить» открывает растение в форме сверху: там добавляются фото и описание.</p>
     <p class="muted small" id="tblNote"></p>
 
     <div class="ptools">
@@ -201,6 +214,11 @@
         <option value="">Любое наличие</option>
         <option value="in">Только в наличии</option>
         <option value="out">Только отсутствующие</option>
+      </select>
+      <select id="tblTodo">
+        <option value="">Фото и описание: любые</option>
+        <option value="nophoto">Только без фото</option>
+        <option value="nodesc">Только без описания</option>
       </select>
       <button class="btn btn--ghost btn--sm" id="btnAllIn" type="button" title="Включить наличие у всех">Включить все</button>
       <button class="btn btn--ghost btn--sm" id="btnAllOut" type="button" title="Выключить наличие у всех">Выключить все</button>

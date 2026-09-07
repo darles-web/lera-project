@@ -151,12 +151,14 @@ const FILE_HEADER = `/* ========================================================
    Каждое растение — блок { ... } в списке PRODUCTS, между блоками запятая.
      id  — уникальный номер (у нового: +1 к последнему)
      category — одно из: "hvoynye" | "listvennye" | "mnogoletnie"
-     price — цена числом, без пробелов и ₽
+     size  — размер (контейнер): "C3", "C5", "C7,5", "C10" или ""
+     price — розничная цена числом, без пробелов и ₽
+     stock — количество в наличии, штук (null — «уточняйте»)
      available — true/false: есть ли растение в продаже (false = «Нет в наличии»)
-     image — путь к фото, например "images/catalog/23.jpg"
+     image — путь к фото, например "images/catalog/23.jpg" ("" — фото пока нет)
      gallery — доп. фото: ["images/catalog/23-1.jpg"] или []
      short — короткая подпись в карточке
-     description — абзацы разделяются пустой строкой
+     description — абзацы разделяются пустой строкой ("" — описания пока нет)
    ===================================================================== */`;
 
 function productToJS(p) {
@@ -167,9 +169,11 @@ function productToJS(p) {
     id: ${Number(p.id)},
     name: ${q(p.name)},
     category: ${q(p.category)},
+    size: ${q(p.size || "")},
     price: ${Number(p.price)},
+    stock: ${p.stock == null || p.stock === "" ? "null" : Number(p.stock)},
     available: ${p.available === false ? "false" : "true"},
-    image: ${q(p.image)},
+    image: ${q(p.image || "")},
     gallery: ${JSON.stringify(p.gallery || [])},
     short: ${q(p.short || "")},
     description: \`${desc}\`
@@ -442,10 +446,13 @@ function searchPhoto(engine) {
 function collectForm() {
   const name = $("fName").value.trim();
   const price = parseInt($("fPrice").value, 10);
+  const stock = parseInt($("fStock") ? $("fStock").value : "", 10);
   return {
     name,
     category: $("fCategory").value,
+    size: $("fSize") ? $("fSize").value.trim() : "",
     price: isNaN(price) ? null : price,
+    stock: isNaN(stock) ? null : Math.max(0, stock),
     available: $("fAvailable") ? $("fAvailable").checked : true,
     short: $("fShort").value.trim(),
     description: $("fDesc").value.trim(),
@@ -454,30 +461,32 @@ function collectForm() {
 
 function renderPreview() {
   const f = collectForm();
-  const img = photos[0]?.dataURL || "images/site/7.jpg";
+  const img = photos[0]?.dataURL || NO_PHOTO;
   const cat = catTitle(f.category);
   const out = f.available === false;
+  const st = stockInfo(f);
   $("preview").innerHTML = `
     <a class="card ${out ? "card--out" : ""}" href="javascript:void(0)">
       <div class="card__img">
         <img src="${img}" alt="">
         <span class="card__tag">${cat}</span>
-        ${out ? '<span class="card__out">Нет в наличии</span>' : ""}
+        ${out ? '<span class="card__out">Нет в наличии</span>'
+              : (f.size ? `<span class="card__size">${esc(f.size)}</span>` : "")}
       </div>
       <div class="card__body">
         <div class="card__name">${esc(f.name) || "Название растения"}</div>
-        <div class="card__short">${esc(f.short) || "короткая подпись"}</div>
+        <div class="card__short">${esc(f.short) || (f.size ? "Контейнер " + esc(f.size) : "короткая подпись")}</div>
         <div class="card__bottom">
           ${out
             ? '<span class="card__price card__price--out">Нет в наличии</span>'
             : `<span class="card__price">${f.price != null ? fmtMoney(f.price) : "— ₽"}</span>`}
-          <span class="card__more">${out ? "Смотреть →" : "Подробнее →"}</span>
+          <span class="card__stock ${st.cls}">${st.text}</span>
         </div>
       </div>
     </a>
     <p class="muted small" style="margin-top:14px">${photos.length > 1 ? `Будет загружено фото: ${photos.length} (первое — главное).` : "Главное фото карточки — слева вверху."}</p>`;
 }
-["fName", "fCategory", "fPrice", "fShort", "fDesc"].forEach(id =>
+["fName", "fCategory", "fSize", "fPrice", "fStock", "fShort", "fDesc"].forEach(id =>
   document.addEventListener("input", e => { if (e.target.id === id) renderPreview(); }));
 if ($("fAvailable")) $("fAvailable").addEventListener("change", renderPreview);
 
@@ -492,7 +501,7 @@ function validate(f, isNew) {
 function resetForm() {
   editingId = null;
   photos = [];
-  ["fName", "fPrice", "fShort", "fDesc"].forEach(id => $(id).value = "");
+  ["fName", "fSize", "fPrice", "fStock", "fShort", "fDesc"].forEach(id => { if ($(id)) $(id).value = ""; });
   $("fCategory").value = "hvoynye";
   if ($("fAvailable")) $("fAvailable").checked = true;
   const aiBox = $("aiResult"); if (aiBox) aiBox.style.display = "none";
@@ -516,9 +525,12 @@ function filteredProducts() {
   const avail = $("tblAvail")?.value || "";
   let list = PRODUCTS.slice();
   if (cat) list = list.filter(p => p.category === cat);
-  if (avail === "in") list = list.filter(p => p.available !== false);
-  if (avail === "out") list = list.filter(p => p.available === false);
-  if (q) list = list.filter(p => (p.name + " " + (p.short || "") + " id" + p.id).toLowerCase().includes(q));
+  if (avail === "in") list = list.filter(p => inStock(p));
+  if (avail === "out") list = list.filter(p => !inStock(p));
+  const todo = $("tblTodo")?.value || "";
+  if (todo === "nophoto") list = list.filter(p => !p.image);
+  if (todo === "nodesc") list = list.filter(p => !String(p.description || "").trim());
+  if (q) list = list.filter(p => (p.name + " " + (p.short || "") + " " + (p.size || "") + " id" + p.id).toLowerCase().includes(q));
   return list;
 }
 
@@ -533,18 +545,27 @@ function productRow(p) {
   return `<tr class="ptable__row${out ? " ptable__row--out" : ""}" data-id="${p.id}">
     <td data-label="Фото">
       <a href="product.html?id=${p.id}" target="_blank" rel="noopener" title="Открыть карточку на сайте">
-        <img class="ptable__img" src="${p.image}" alt="" loading="lazy">
+        <img class="ptable__img" src="${prodImage(p)}" alt="" loading="lazy">
       </a>
     </td>
     <td data-label="Название">
-      <div class="ptable__name">${esc(p.name)}</div>
-      <div class="ptable__meta">id ${p.id} · фото: ${photosCount}${out ? " · <b>нет в наличии</b>" : ""}</div>
+      <div class="ptable__name">${esc(p.name)}${p.image ? "" : '<span class="tag-todo">нет фото</span>'}${String(p.description || "").trim() ? "" : '<span class="tag-todo">нет описания</span>'}</div>
+      <div class="ptable__meta">id ${p.id} · фото: ${p.image ? photosCount : 0}${out ? " · <b>нет в наличии</b>" : ""}</div>
     </td>
     <td data-label="Категория">
       <select class="ptable__select" data-act="cat" data-id="${p.id}">${catOptions(p.category)}</select>
     </td>
+    <td data-label="Размер">
+      <input class="ptable__size" type="text" list="sizeList" value="${esc(p.size || "")}" placeholder="—"
+             data-act="size" data-id="${p.id}" autocomplete="off">
+    </td>
     <td data-label="Цена, ₽">
       <input class="ptable__price" type="number" min="0" step="50" value="${Number(p.price) || 0}" data-act="price" data-id="${p.id}">
+    </td>
+    <td data-label="Кол-во, шт">
+      <input class="ptable__stock" type="number" min="0" step="1" inputmode="numeric"
+             value="${p.stock == null ? "" : Number(p.stock)}" placeholder="—"
+             data-act="stock" data-id="${p.id}" title="Количество в наличии. Пусто — «уточняйте», 0 — «Под заказ»">
     </td>
     <td data-label="Наличие">
       <label class="switch" title="${out ? "Сейчас на сайте: «Нет в наличии»" : "Сейчас на сайте: в продаже"}">
@@ -569,7 +590,9 @@ function draftRow(d, i) {
       <div class="ptable__meta">${catTitle(d.category)}${d.price != null ? " · " + fmtMoney(d.price) : ""}</div>
     </td>
     <td data-label="Категория">${catTitle(d.category)}</td>
+    <td data-label="Размер">${esc(d.size || "—")}</td>
     <td data-label="Цена, ₽">${d.price != null ? fmtMoney(d.price) : "—"}</td>
+    <td data-label="Кол-во, шт">${d.stock == null ? "—" : d.stock}</td>
     <td data-label="Наличие">${d.available === false ? "нет" : "—"}</td>
     <td data-label="Действия" class="ptable__actions">
       <button class="prow__btn" data-act="editdraft" data-i="${i}">В форму</button>
@@ -580,10 +603,12 @@ function draftRow(d, i) {
 
 function renderTable() {
   const list = filteredProducts();
-  const outCount = PRODUCTS.filter(p => p.available === false).length;
+  const outCount = PRODUCTS.filter(p => !inStock(p)).length;
+  const noPhotoCount = PRODUCTS.filter(p => !p.image).length;
   $("prodCount").textContent =
     `— ${PRODUCTS.length} на сайте` +
     (outCount ? `, из них ${outCount} нет в наличии` : "") +
+    (noPhotoCount ? `, без фото ${noPhotoCount}` : "") +
     (drafts.length ? `, черновиков: ${drafts.length}` : "") +
     (list.length !== PRODUCTS.length ? ` · показано: ${list.length}` : "");
 
@@ -598,7 +623,9 @@ function renderTable() {
         <th class="ptable__c-photo">Фото</th>
         <th>Название</th>
         <th class="ptable__c-cat">Категория</th>
+        <th class="ptable__c-size">Размер</th>
         <th class="ptable__c-price">Цена, ₽</th>
+        <th class="ptable__c-stock">Кол-во, шт</th>
         <th class="ptable__c-avail">Наличие</th>
         <th class="ptable__c-act">Действия</th>
       </tr></thead>
@@ -613,7 +640,7 @@ function bindTable() {
     const act = el.dataset.act;
     const id = el.dataset.id ? +el.dataset.id : null;
 
-    if (act === "avail" || act === "cat" || act === "price") {
+    if (act === "avail" || act === "cat" || act === "price" || act === "stock" || act === "size") {
       el.addEventListener("change", () => {
         if (act === "avail") toggleAvailable(id, el.checked);
         if (act === "cat") updateField(id, { category: el.value }, "категория: " + catTitle(el.value));
@@ -626,8 +653,32 @@ function bindTable() {
           }
           updateField(id, { price: v }, "цена: " + fmtMoney(v));
         }
+        if (act === "size") {
+          const v = el.value.trim().replace(/^[Сс]/, "C").replace(/\s+/g, "");
+          updateField(id, { size: v }, v ? "размер: " + v : "размер убран");
+        }
+        if (act === "stock") {
+          const raw = el.value.trim();
+          if (raw === "") {
+            updateField(id, { stock: null }, "количество: уточняйте");
+            return;
+          }
+          const v = parseInt(raw, 10);
+          if (isNaN(v) || v < 0) {
+            alert("Количество — целое число штук (например 120). Пустое поле = «уточняйте».");
+            renderTable();
+            return;
+          }
+          const p = PRODUCTS.find(x => x.id === id);
+          const patch = { stock: v };
+          // 0 штук — растение автоматически уходит в «нет в наличии», больше 0 — возвращается
+          if (v === 0 && p && p.available !== false) patch.available = false;
+          if (v > 0 && p && p.available === false) patch.available = true;
+          updateField(id, patch, "количество: " + v + " шт");
+        }
       });
-      if (act === "price") el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); });
+      if (act === "price" || act === "stock" || act === "size")
+        el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); });
       return;
     }
 
@@ -873,7 +924,9 @@ function startEdit(id) {
   editingId = id;
   $("fName").value = p.name;
   $("fCategory").value = p.category;
+  if ($("fSize")) $("fSize").value = p.size || "";
   $("fPrice").value = p.price;
+  if ($("fStock")) $("fStock").value = p.stock == null ? "" : p.stock;
   $("fShort").value = p.short || "";
   $("fDesc").value = p.description || "";
   if ($("fAvailable")) $("fAvailable").checked = p.available !== false;
@@ -892,14 +945,16 @@ function startEdit(id) {
 
 function cardMarkup(p) {
   const cat = catTitle(p.category);
+  const st = stockInfo(p);
   return `<a class="card" href="javascript:void(0)">
-    <div class="card__img"><img src="${p.image}" alt=""><span class="card__tag">${cat}</span></div>
+    <div class="card__img"><img src="${prodImage(p)}" alt=""><span class="card__tag">${cat}</span>
+      ${p.size ? `<span class="card__size">${esc(p.size)}</span>` : ""}</div>
     <div class="card__body">
       <div class="card__name">${esc(p.name)}</div>
-      <div class="card__short">${esc(p.short || "")}</div>
+      <div class="card__short">${esc(p.short || (p.size ? "Контейнер " + p.size : ""))}</div>
       <div class="card__bottom">
         <span class="card__price">${fmtMoney(p.price)}</span>
-        <span class="card__more">Подробнее →</span>
+        <span class="card__stock ${st.cls}">${st.text}</span>
       </div>
     </div>
   </a>`;
@@ -909,6 +964,8 @@ function loadDraftToForm(i) {
   const d = drafts[i];
   $("fName").value = d.name; $("fCategory").value = d.category;
   $("fPrice").value = d.price ?? ""; $("fShort").value = d.short || "";
+  if ($("fSize")) $("fSize").value = d.size || "";
+  if ($("fStock")) $("fStock").value = d.stock == null ? "" : d.stock;
   $("fDesc").value = d.description || "";
   photos = [
     ...(d.imageDataURL ? [{ originalDataURL: d.imageDataURL, dataURL: d.imageDataURL, state: null, name: d.name || "" }] : []),
@@ -973,9 +1030,10 @@ async function publish() {
     const entry = {
       id,
       name: f.name, category: f.category, price: f.price,
+      size: f.size, stock: f.stock,
       available: f.available !== false,
       image: (editingId != null && !photos.length)
-        ? oldEntry?.image || mainPath
+        ? (oldEntry ? oldEntry.image || "" : mainPath)   // фото не меняли — оставляем как было ("" = фото ещё нет)
         : mainPath,
       gallery: gallery.length ? gallery : (oldEntry?.gallery || []),
       short: f.short, description: f.description
@@ -1070,6 +1128,7 @@ async function downloadFiles() {
   if (oldEntry) {
     Object.assign(oldEntry, {
       name: f.name, category: f.category, price: f.price,
+      size: f.size, stock: f.stock,
       available: f.available !== false,
       image: photos[0] ? `images/catalog/${id}.jpg` : oldEntry.image,
       gallery: gallery.length ? gallery : (oldEntry.gallery || []),
@@ -1077,7 +1136,7 @@ async function downloadFiles() {
     });
   } else {
     products.push({
-      id, name: f.name, category: f.category, price: f.price,
+      id, name: f.name, category: f.category, size: f.size, price: f.price, stock: f.stock,
       available: f.available !== false,
       image: `images/catalog/${id}.jpg`, gallery,
       short: f.short, description: f.description
@@ -1220,6 +1279,15 @@ $("btnSearchPhotoG").addEventListener("click", () => searchPhoto("lens"));
 $("tblSearch").addEventListener("input", renderTable);
 $("tblCat").addEventListener("change", renderTable);
 $("tblAvail").addEventListener("change", renderTable);
+if ($("tblTodo")) $("tblTodo").addEventListener("change", renderTable);
+
+/* подсказки размеров контейнеров — из каталога */
+if ($("sizeList")) {
+  $("sizeList").innerHTML = [...new Set(PRODUCTS.map(p => p.size).filter(Boolean))]
+    .sort((a, b) => parseFloat(a.replace(/[^\d,]/g, "").replace(",", ".")) -
+                    parseFloat(b.replace(/[^\d,]/g, "").replace(",", ".")))
+    .map(v => `<option value="${v}"></option>`).join("");
+}
 $("btnAllIn").addEventListener("click", () => setAllAvailable(true));
 $("btnAllOut").addEventListener("click", () => setAllAvailable(false));
 

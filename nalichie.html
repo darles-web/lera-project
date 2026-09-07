@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Наличие и цены — питомник «ДарЛес»</title>
+<meta name="description" content="Полный прайс питомника «ДарЛес»: наименование, размер контейнера, розничная цена и количество в наличии.">
+<link rel="icon" href="images/site/6.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/assistant.css">
+<link rel="stylesheet" href="css/animations.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<section class="page-head">
+  <div class="wrap center">
+    <div class="crumbs"><a href="index.html">Главная</a> / Наличие и цены</div>
+    <h2>Наличие и цены</h2>
+    <p class="lead">Полный список растений питомника: размер контейнера, розничная цена и количество на площадке.
+      Наличие обновляется вручную — перед приездом уточняйте по телефону.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Поиск по названию, например: туя">
+    <select id="cat">
+      <option value="">Все категории</option>
+      <option value="hvoynye">Хвойные</option>
+      <option value="listvennye">Лиственные</option>
+      <option value="mnogoletnie">Многолетние</option>
+    </select>
+    <select id="size">
+      <option value="">Любой размер</option>
+    </select>
+    <label class="check check--inline"><input type="checkbox" id="onlyStock"> Только в наличии</label>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="pricetable-wrap">
+    <table class="pricetable" id="table">
+      <thead>
+        <tr>
+          <th class="th-sort" data-sort="name">Наименование</th>
+          <th class="th-sort" data-sort="category">Категория</th>
+          <th class="th-sort" data-sort="size">Размер</th>
+          <th class="th-sort th-num" data-sort="price">Розничная цена</th>
+          <th class="th-sort th-num" data-sort="stock">В наличии</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty" style="display:none">Ничего не найдено. Попробуйте изменить запрос.</div>
+</section>
+
+<section class="section center">
+  <div class="wrap">
+    <h2>Нужен большой объём или растения под заказ?</h2>
+    <p class="lead">Для ландшафтных компаний и оптовых заказов действуют отдельные условия. Позвоните — рассчитаем.</p>
+    <div style="margin-top:26px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+      <a class="btn" href="tel:+79781049236">Позвонить</a>
+      <a class="btn btn--ghost" href="https://t.me/darles_garden" target="_blank" rel="noopener">Написать в Telegram</a>
+    </div>
+  </div>
+</section>
+
+<div id="site-footer"></div>
+
+<script src="js/products.js"></script>
+<script src="js/site.js"></script>
+<script src="js/animations.js"></script>
+<script>
+renderHeader(); renderFooter();
+
+const $ = id => document.getElementById(id);
+let sortKey = "name", sortDir = 1;
+
+/* размеры контейнеров из каталога */
+const sizes = [...new Set(PRODUCTS.map(p => p.size).filter(Boolean))]
+  .sort((a, b) => parseFloat(a.replace(/[^\d,]/g, "").replace(",", ".")) -
+                  parseFloat(b.replace(/[^\d,]/g, "").replace(",", ".")));
+$("size").insertAdjacentHTML("beforeend",
+  sizes.map(s => `<option value="${s}">${s}</option>`).join(""));
+
+function render() {
+  const q = $("search").value.trim().toLowerCase();
+  const cat = $("cat").value;
+  const size = $("size").value;
+  const only = $("onlyStock").checked;
+
+  let list = PRODUCTS.filter(p => {
+    if (cat && p.category !== cat) return false;
+    if (size && p.size !== size) return false;
+    if (only && !inStock(p)) return false;
+    if (q && !(p.name + " " + (p.short || "") + " " + (p.size || "")).toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  list.sort((a, b) => {
+    // чего нет в наличии — в конец
+    const io = (inStock(a) ? 0 : 1) - (inStock(b) ? 0 : 1);
+    if (io) return io;
+    let r;
+    if (sortKey === "price" || sortKey === "stock") {
+      r = (Number(a[sortKey]) || 0) - (Number(b[sortKey]) || 0);
+    } else if (sortKey === "category") {
+      r = (CATEGORIES[a.category]?.title || "").localeCompare(CATEGORIES[b.category]?.title || "", "ru");
+    } else {
+      r = String(a[sortKey] || "").localeCompare(String(b[sortKey] || ""), "ru");
+    }
+    return r * sortDir || a.name.localeCompare(b.name, "ru");
+  });
+
+  $("tbody").innerHTML = list.map(p => {
+    const st = stockInfo(p);
+    return `<tr>
+      <td><a href="product.html?id=${p.id}">${p.name}</a></td>
+      <td class="td-cat">${CATEGORIES[p.category]?.title || ""}</td>
+      <td>${p.size || "—"}</td>
+      <td class="th-num td-price">${money(p.price)}</td>
+      <td class="th-num"><span class="stock ${st.cls}">${st.short}</span></td>
+    </tr>`;
+  }).join("");
+
+  $("empty").style.display = list.length ? "none" : "block";
+  document.querySelector(".pricetable-wrap").style.display = list.length ? "" : "none";
+  $("count").textContent = list.length + " поз.";
+  document.querySelectorAll(".th-sort").forEach(th =>
+    th.classList.toggle("sorted", th.dataset.sort === sortKey));
+}
+
+["search", "cat", "size", "onlyStock"].forEach(id =>
+  $(id).addEventListener("input", render));
+
+document.querySelectorAll(".th-sort").forEach(th => th.addEventListener("click", () => {
+  if (sortKey === th.dataset.sort) sortDir = -sortDir;
+  else { sortKey = th.dataset.sort; sortDir = 1; }
+  render();
+}));
+
+render();
+</script>
+<script src="js/assistant.js" defer></script>
+</body>
+</html>
