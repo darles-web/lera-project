@@ -1,0 +1,4 @@
+# Не отдавать вспомогательные файлы API напрямую (они только включаются из .php)
+<FilesMatch "^(common\.php|config\.local\.php)$">
+  Require all denied
+</FilesMatch>

@@ -5,30 +5,32 @@
    короткую подпись и описание — их можно поправить в форме перед
    публикацией.
 
-   Запрос уходит из браузера напрямую к выбранному провайдеру:
+   Запрос идёт НА СЕРВЕР САЙТА (api/ai.php), а уже от него — к провайдеру:
      • OpenAI          (api.openai.com)
      • Google Gemini   (generativelanguage.googleapis.com)
-     • Anthropic Claude(api.anthropic.com)
+     • Anthropic Claude (api.anthropic.com)
 
-   Ключ хранится ТОЛЬКО в вашем браузере (localStorage) и отправляется
-   только на сервер выбранного провайдера. Сайт статический, своего
-   сервера у него нет — поэтому ключ вводите сами, в своей панели.
+   Так нет ошибки «failed to fetch» (CORS): браузер общается только
+   с собственным доменом. Ключ API хранится НА СЕРВЕРЕ (в файле
+   api/config.local.php), а не в браузере — посетители сайта его не видят.
+
+   Если сервер хостинга сам не может достучаться до провайдера
+   (гео-блокировка и т.п.), в настройках есть поле «Свой адрес API»
+   — туда можно вписать адрес прокси-сервера.
    ===================================================================== */
 
 const AdminAI = (() => {
-  const KEY = "darles_admin_ai_cfg";
-
   const DEFAULT_MODEL = {
-    openai: "gpt-5.6-luna",
+    openai: "gpt-4o-mini",
     gemini: "gemini-2.5-flash",
-    anthropic: "claude-sonnet-5"
+    anthropic: "claude-sonnet-4-20250514"
   };
 
   /* Подсказки для поля «модель». Можно вписать любую свою — поле свободное. */
   const MODELS = {
-    openai: ["gpt-5.6-luna", "gpt-5.5", "gpt-4o-mini", "gpt-4o"],
+    openai: ["gpt-4o-mini", "gpt-4o", "gpt-5.5", "gpt-5.6-luna"],
     gemini: ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.5-pro"],
-    anthropic: ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"]
+    anthropic: ["claude-sonnet-4-20250514", "claude-haiku-4-5", "claude-opus-4-1-20250805"]
   };
 
   const LABELS = {
@@ -63,23 +65,55 @@ const AdminAI = (() => {
 • confidence — уверенность от 0 до 1. Если растение опознать нельзя, верни confidence 0 и в comment объясни почему.
 • Не указывай цену: её знает только питомник.`;
 
-  let cfg = Object.assign(
-    { provider: "openai", model: "", key: "" },
-    (() => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } })()
-  );
+  /* Настройки живёт НА СЕРВЕРЕ; сюда они приходят запросом к api/config.php. */
+  let server = { provider: "openai", model: "", key: "", base: "" };
 
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
-  function get() { return { ...cfg }; }
-  function set(patch) { Object.assign(cfg, patch); save(); }
-  function model() { return (cfg.model || DEFAULT_MODEL[cfg.provider] || "").trim(); }
-  function providerLabel() { return LABELS[cfg.provider] || cfg.provider; }
-  function models() { return MODELS[cfg.provider] || []; }
-  function isReady() { return !!cfg.key && !!model(); }
+  function applyServer(ai) {
+    if (!ai || typeof ai !== "object") return;
+    server = {
+      provider: ai.provider || "openai",
+      model: String(ai.model || ""),
+      key: String(ai.key || ""),
+      base: String(ai.base || "")
+    };
+  }
+  function get() { return { ...server }; }
+  function model() { return (server.model || DEFAULT_MODEL[server.provider] || "").trim(); }
+  function providerLabel() { return LABELS[server.provider] || server.provider; }
+  function models() { return MODELS[server.provider] || []; }
+  function isReady() { return !!server.key && !!model(); }
   function requirement() {
-    return isReady()
-      ? ""
-      : "ИИ не настроен: откройте «Настройки публикации» → блок «ИИ-помощник», " +
-        "выберите провайдер и вставьте свой ключ.";
+    return "ИИ не настроен: откройте «Настройки» → блок «ИИ-помощник», " +
+      "выберите провайдера, модель и вставьте ключ — он сохранится на сервере.";
+  }
+
+  /* ---------- запрос к api/ai.php (свой домен — CORS не нужен) ---------- */
+  function token() {
+    try {
+      const s = JSON.parse(sessionStorage.getItem("darles_admin_session") || "null");
+      return s && typeof s.hash === "string" ? s.hash : null;
+    } catch { return null; }
+  }
+
+  async function apiPost(data) {
+    const t = token();
+    if (!t) throw new Error("Сессия админ-панели истекла — войдите заново");
+    let res;
+    try {
+      res = await fetch("api/ai.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ token: t }, data))
+      });
+    } catch (e) {
+      throw new Error("сервер не ответил — проверьте, что сайт открыт по адресу хостинга");
+    }
+    let j = null;
+    try { j = await res.json(); } catch {}
+    if (!res.ok || !j || j.ok === false) {
+      throw new Error((j && j.error) || ("HTTP " + res.status));
+    }
+    return j;
   }
 
   /* ---------- подготовка изображения ---------- */
@@ -161,137 +195,27 @@ const AdminAI = (() => {
     };
   }
 
-  /* ---------- запросы к провайдерам ---------- */
-  async function apiMessage(res, name) {
-    let msg = res.status + " " + res.statusText;
-    try {
-      const j = await res.json();
-      msg = j?.error?.message || j?.message || j?.error || msg;
-    } catch (e) {}
-    return name + ": " + msg;
-  }
-
-  async function callOpenAI(b64, mime, useJsonFormat = true) {
-    const body = {
-      model: model(),
-      temperature: 0.3,
-      messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: [
-          { type: "text", text: PROMPT },
-          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } }
-        ] }
-      ]
-    };
-    const send = jsonFormat => fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.key },
-      body: JSON.stringify(jsonFormat ? { ...body, response_format: { type: "json_object" } } : body)
-    });
-
-    let res = await send(useJsonFormat);
-    if (!res.ok && useJsonFormat) {
-      const raw = await res.clone().text().catch(() => "");
-      if (/response_format|json_object|Unsupported/i.test(raw)) res = await send(false);
-    }
-    if (!res.ok) throw new Error(await apiMessage(res, "OpenAI"));
-    const j = await res.json();
-    return j?.choices?.[0]?.message?.content || "";
-  }
-
-  async function callGemini(b64, mime) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model())}:generateContent?key=${encodeURIComponent(cfg.key)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: mime, data: b64 } }] }],
-        generationConfig: { temperature: 0.3, responseMimeType: "application/json" }
-      })
-    });
-    if (!res.ok) throw new Error(await apiMessage(res, "Gemini"));
-    const j = await res.json();
-    return (j?.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("\n");
-  }
-
-  async function callAnthropic(b64, mime) {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": cfg.key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: model(),
-        max_tokens: 2500,
-        system: SYSTEM,
-        messages: [{ role: "user", content: [
-          { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
-          { type: "text", text: PROMPT }
-        ] }]
-      })
-    });
-    if (!res.ok) throw new Error(await apiMessage(res, "Anthropic"));
-    const j = await res.json();
-    return (j?.content || []).map(c => c.text || "").join("\n");
-  }
-
   /* ---------- публичные методы ---------- */
   async function analyze(dataURL) {
     if (!isReady()) throw new Error(requirement());
     const { b64, mime } = await prepare(dataURL);
-    let text = "";
-    if (cfg.provider === "gemini") text = await callGemini(b64, mime);
-    else if (cfg.provider === "anthropic") text = await callAnthropic(b64, mime);
-    else text = await callOpenAI(b64, mime);
-    return parseAnswer(text);
+    const j = await apiPost({ action: "analyze", b64, mime, system: SYSTEM, prompt: PROMPT });
+    return parseAnswer(j.text);
   }
 
   async function analyzeUrl(url) {
     return analyze(await urlToDataURL(url));
   }
 
-  /* Проверка ключа и модели — маленький текстовый запрос без картинки */
+  /* Проверка ключа и модели — маленький текстовый запрос через сервер */
   async function test() {
-    if (!cfg.key) throw new Error("не указан ключ");
-    if (!model()) throw new Error("не указана модель");
-    if (cfg.provider === "gemini") {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model())}:generateContent?key=${encodeURIComponent(cfg.key)}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: "Ответь JSON: {\"ok\":true}" }] }] })
-      });
-      if (!res.ok) throw new Error(await apiMessage(res, "Gemini"));
-      return "OK";
-    }
-    if (cfg.provider === "anthropic") {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": cfg.key,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({ model: model(), max_tokens: 16, messages: [{ role: "user", content: "Ответь одним словом: ok" }] })
-      });
-      if (!res.ok) throw new Error(await apiMessage(res, "Anthropic"));
-      return "OK";
-    }
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.key },
-      body: JSON.stringify({ model: model(), max_tokens: 16, messages: [{ role: "user", content: "Ответь одним словом: ok" }] })
-    });
-    if (!res.ok) throw new Error(await apiMessage(res, "OpenAI"));
+    if (!isReady()) throw new Error(requirement());
+    await apiPost({ action: "test" });
     return "OK";
   }
 
   return {
-    get, set, save, model, models, isReady, requirement,
+    applyServer, get, model, models, isReady, requirement,
     providerLabel, DEFAULT_MODEL, LABELS,
     analyze, analyzeUrl, test, prepare, urlToDataURL, parseAnswer
   };

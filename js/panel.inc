@@ -8,8 +8,8 @@
     <h2>Админ-панель</h2>
     <p class="lead">Добавляйте растения перетаскиванием фото и простыми полями. Остальное панель сделает сама.</p>
     <div class="admin__status">
-      <span id="ghStatus" class="badge badge--gray">Проверяю подключение…</span>
-      <button class="btn btn--ghost btn--sm" id="btnSettings" type="button">Настройки публикации</button>
+      <span id="srvStatus" class="badge badge--gray">Проверяю хостинг…</span>
+      <button class="btn btn--ghost btn--sm" id="btnSettings" type="button">Настройки</button>
       <button class="btn btn--ghost btn--sm" id="btnLogout" type="button" title="Выйти из админ-панели">Выйти</button>
     </div>
   </div>
@@ -18,37 +18,14 @@
 <!-- ================= НАСТРОЙКИ ================= -->
 <section class="wrap" id="settings" style="display:none">
   <div class="panel">
-    <h3>Публикация на сайт</h3>
-    <p class="muted">Чтобы растения появлялись на сайте «в один клик», подключите панель к репозиторию GitHub.</p>
-    <div class="field-row">
-      <label>Репозиторий
-        <input id="cfgRepo" type="text" value="samagon90/lera-project">
-      </label>
-      <label>Ветка
-        <input id="cfgBranch" type="text" value="main">
-      </label>
-    </div>
-    <label>Токен GitHub <span class="muted">(fine-grained, право Contents: Read and write — только для этого репозитория)</span>
-      <div class="pass-wrap">
-        <input id="cfgToken" type="password" placeholder="github_pat_…" autocomplete="off">
-        <button class="pass-eye" id="cfgTokenEye" type="button" aria-label="Показать токен" title="Показать / скрыть">👁</button>
-      </div>
-      <span class="muted small">Кнопка 👁 — показать/скрыть введённый токен. Это токен GitHub, а не пароль от панели: пароль от входа хранится отдельно.</span>
-    </label>
-    <p class="muted small">Как получить токен: github.com → Settings → Developer settings →
-      Fine-grained tokens → Generate new token → в «Repository access» выберите только lera-project,
-      в Permissions → Contents → Read and write. Токен хранится только в вашем браузере и никому не передаётся,
-      кроме GitHub. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Открыть страницу токенов →</a></p>
-    <div class="btn-row">
-      <button class="btn btn--sm" id="btnSaveCfg" type="button">Сохранить и проверить</button>
-      <button class="btn btn--ghost btn--sm" id="btnForget" type="button">Забыть токен</button>
-    </div>
-    <p class="muted small">Без токена панель работает в «локальном режиме»: кнопка «Скачать файлы»
-      выдаст готовые файлы — их нужно загрузить в репозиторий вручную (кнопка Add file → Upload files).</p>
+    <h3>Настройки</h3>
+    <p class="muted">Сайт живёт на хостинге и не зависит от GitHub. Все изменения
+      (каталог, фото, ключ ИИ) панель сохраняет напрямую в файлы хостинга:
+      <b>data/catalog.json</b>, <b>images/catalog/</b>, <b>api/config.local.php</b>.</p>
 
     <hr style="margin:26px 0 18px;border:0;border-top:1px solid #e3e9e5">
     <h4>Пароль админ-панели</h4>
-    <p class="muted small">Смена выполняется прямо на GitHub, если подключён токен с правом записи.
+    <p class="muted small">Смена выполняется прямо на сервере (обновляется файл js/admin-auth.js).
       Вход после смены — уже с новым паролем.</p>
     <div class="btn-row">
       <button class="btn btn--ghost btn--sm" id="btnChangePass" type="button">Сменить пароль</button>
@@ -57,7 +34,8 @@
     <hr style="margin:26px 0 18px;border:0;border-top:1px solid #e3e9e5">
     <h4>ИИ-помощник (распознавание растений по фото)</h4>
     <p class="muted small">Помощник смотрит на загруженное фото и сам заполняет название, категорию,
-      короткую подпись и описание. Вы всё правите руками — и только потом публикуете.</p>
+      короткую подпись и описание. Вы всё правите руками — и только потом публикуете.
+      Запрос идёт через сервер сайта — поэтому ошибки «failed to fetch» нет, а ключ не видят посетители.</p>
     <div class="field-row">
       <label>Провайдер
         <select id="aiProvider">
@@ -74,9 +52,12 @@
     <label>Ключ API
       <input id="aiKey" type="password" placeholder="sk-… / AIza… / sk-ant-…" autocomplete="off">
     </label>
-    <p class="muted small">Ключ хранится только в вашем браузере и уходит только на сервер выбранного
-      провайдера: запрос идёт напрямую, своего сервера у сайта нет. Модель смотрит картинку,
-      поэтому провайдер берёт за запрос небольшую плату (обычно доли цента).
+    <label>Свой адрес API (прокси) <span class="muted">— только если сервер хостинга сам не может открыть api.openai.com</span>
+      <input id="aiBase" type="text" placeholder="например https://my-proxy.example.com — можно оставить пустым" autocomplete="off">
+    </label>
+    <p class="muted small">Ключ сохраняется на сервере (в api/config.local.php) и не передаётся никому,
+      кроме сервера провайдера. Модель смотрит картинку, поэтому провайдер берёт за запрос
+      небольшую плату (обычно доли цента).
       Ключи: OpenAI — platform.openai.com/api-keys, Gemini — aistudio.google.com/apikey,
       Claude — console.anthropic.com/settings/keys.</p>
     <div class="btn-row">
@@ -166,10 +147,10 @@
       </label>
 
       <div class="btn-row">
-        <button class="btn" id="btnPublish" type="button">Опубликовать на сайт</button>
-        <button class="btn btn--ghost" id="btnSaveDraft" type="button">Сохранить черновик</button>
-        <button class="btn btn--ghost" id="btnDownload" type="button">Скачать файлы</button>
-        <button class="btn btn--ghost" id="btnReset" type="button" style="display:none">Отмена</button>
+      <button class="btn" id="btnPublish" type="button">Опубликовать на сайт</button>
+      <button class="btn btn--ghost" id="btnSaveDraft" type="button">Сохранить черновик</button>
+      <button class="btn btn--ghost" id="btnDownload" type="button" title="Скачать копию каталога (darles-catalog.json) — резервный способ перенести данные">Скачать каталог (JSON)</button>
+      <button class="btn btn--ghost" id="btnReset" type="button" style="display:none">Отмена</button>
       </div>
 
       <div class="publog" id="publog" style="display:none"></div>

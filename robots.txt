@@ -1,8 +1,11 @@
 User-agent: *
 Allow: /
 Disallow: /admin.html
+Disallow: /api/
 Disallow: /js/admin-auth.js
 Disallow: /js/panel.inc
+Disallow: /js/admin.js
+Disallow: /js/admin-ai.js
 Disallow: /INSTRUCTION.md
 Disallow: /ШПАРГАЛКА.md
 Disallow: /README.md

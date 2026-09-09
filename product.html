@@ -25,15 +25,19 @@
 <div id="site-footer"></div>
 
 <script src="js/products.js"></script>
+<script src="js/catalog-loader.js"></script>
 <script src="js/site.js"></script>
 <script src="js/animations.js"></script>
 <script>
+(async () => {
 renderHeader(); renderFooter();
 
 const escHTML = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 const id = Number(new URLSearchParams(location.search).get("id"));
+// сначала каталог с сервера хостинга (если PHP доступен)
+await CatalogServer.load();
 const p = PRODUCTS.find(x => x.id === id);
 const main = document.getElementById("main");
 
@@ -107,6 +111,7 @@ if (!p) {
   document.getElementById("related").innerHTML =
     PRODUCTS.filter(x => x.category === p.category && x.id !== p.id).slice(0, 4).map(cardHTML).join("");
 }
+})();
 </script>
 <script src="js/assistant.js" defer></script>
 </body>

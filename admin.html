@@ -12,8 +12,8 @@
 <meta http-equiv="Expires" content="0">
 <link rel="icon" href="images/site/6.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
-<link rel="stylesheet" href="css/admin.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/admin.css?v=7">
 <script>
   // СРАЗУ до загрузки любых скриптов: если старая сессия не от этой версии — сбрасываем
   try {
@@ -24,7 +24,7 @@
     }
   } catch(e) {}
 </script>
-<script src="js/admin-auth.js?v=6"></script>
+<script src="js/admin-auth.js?v=7"></script>
 </head>
 <body>
 <script>
@@ -34,20 +34,22 @@
     function loadScript(src) {
       return new Promise((res, rej) => {
         const s = document.createElement("script");
-        s.src = src + "?v=6"; s.onload = res; s.onerror = () => rej(new Error("Не удалось загрузить " + src));
+        s.src = src + "?v=7"; s.onload = res; s.onerror = () => rej(new Error("Не удалось загрузить " + src));
         document.body.appendChild(s);
       });
     }
 
     (async () => {
       try {
-        // v4: файл переименован из js/_panel.inc — Jekyll (GitHub Pages)
-        // не публикует файлы с именем, начинающимся с "_", и отдавал 404.
-        const resp = await fetch("js/panel.inc?v=6", { cache: "no-store" });
+        const resp = await fetch("js/panel.inc?v=7", { cache: "no-store" });
         if (!resp.ok) throw new Error("Не удалось загрузить панель");
         document.body.innerHTML = await resp.text();
 
         await loadScript("js/products.js");
+        // загрузчик «живого» каталога с хостинга (data/catalog.json)
+        await loadScript("js/catalog-loader.js");
+        await CatalogServer.ping();       // определить: серверный режим или статический
+        await CatalogServer.load();       // подменить PRODUCTS данными с сервера
         await loadScript("js/site.js");
         await loadScript("js/photo-editor.js");
         await loadScript("js/admin-ai.js");

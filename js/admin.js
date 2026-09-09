@@ -1,50 +1,42 @@
 /* =====================================================================
    АДМИН-ПАНЕЛЬ «ДарЛес»
-   Добавление растений: фото перетаскиванием, поля, публикация на сайт.
-   Работает в двух режимах:
-     1) GitHub подключён — публикация в один клик (фото + js/products.js)
-     2) Локальный режим — кнопка «Скачать файлы» и ручная загрузка
+   ---------------------------------------------------------------------
+   Добавление / изменение / удаление растений. Фото — перетаскиванием.
+   ВСЕ изменения сохраняются НА СЕРВЕРЕ хостинга:
+
+     • каталог  → data/catalog.json      (api/catalog.php)
+     • фото     → images/catalog/*.jpg   (api/upload.php)
+     • ключ ИИ  → api/config.local.php   (api/config.php)
+
+   Никакого GitHub: сайт живёт на хостинге, панель пишет напрямую
+   в файлы этого хостинга. Если PHP недоступен (сайт открыт не с
+   хостинга), панель показывает «статический режим» — правки можно
+   скачать файлом darles-catalog.json и загрузить вручную.
    ===================================================================== */
 
-const CFG_KEY = "darles_admin_cfg";
 const DRAFTS_KEY = "darles_drafts";
 
-const cfg = Object.assign(
-  { repo: "samagon90/lera-project", branch: "main", token: "" },
-  JSON.parse(localStorage.getItem(CFG_KEY) || "{}")
-);
-
-let ghOK = false;          // подключён ли GitHub
-let ghPush = false;        // есть ли право на запись
 let photos = [];           // [{ dataURL, name }] — dataURL уже обработанного фото
 let editingId = null;      // id растения, которое редактируем (или null)
 let drafts = loadDrafts();
 let recogCandidates = [];  // кандидаты автоопределения растения (без API)
 let recogPrev = null;      // снимок полей до офлайн-заполнения
+let serverMode = false;    // работает ли PHP-хостинг (есть ли папка api/)
+
+const NO_SERVER_MSG =
+  "Сервер не отвечает (нужны PHP и папка api/ на хостинге).\n\n" +
+  "Правки из панели сохраняются на сайт только при открытии панели по адресу сайта на хостинге.\n" +
+  "Если сайт уже размещён — проверьте, что при загрузке архива папка api/ распаковалась целиком.\n\n" +
+  "Пока это недоступно: заполните растение и нажмите «Скачать каталог (JSON)»,\n" +
+  "затем загрузите фото и файл в папки images/catalog и data на хостинге.";
 
 /* ------------------------------------------------------------------ */
 /* Утилиты                                                             */
 /* ------------------------------------------------------------------ */
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-/* money() объявляет js/site.js — он загружается раньше этой панели.
-   Раньше здесь было точно такое же объявление, и из-за него весь admin.js
-   падал с SyntaxError «Identifier money has already been declared»,
-   поэтому у своей функции другое имя. */
+/* money() объявляет js/site.js — он загружается раньше этой панели. */
 const fmtMoney = n => new Intl.NumberFormat("ru-RU").format(n) + " ₽";
-
-function utf8b64(str) {
-  const bytes = new TextEncoder().encode(str);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000)
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-const b64part = dataURL => dataURL.split(",")[1];
-
-function saveCfg() {
-  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-}
 
 function loadDrafts() {
   try { return JSON.parse(localStorage.getItem(DRAFTS_KEY) || "[]"); }
@@ -52,7 +44,7 @@ function loadDrafts() {
 }
 function saveDrafts() {
   try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)); }
-  catch (e) { alert("Черновик не сохранён в браузере (нет места), но он не потерян в открытой форме — опубликуйте или скачайте файлы."); }
+  catch (e) { alert("Черновик не сохранён в браузере (нет места), но он не потерян в открытой форме."); }
 }
 
 function logLine(cls, text, html = false) {
@@ -66,130 +58,89 @@ function logLine(cls, text, html = false) {
 }
 
 /* ------------------------------------------------------------------ */
-/* GitHub API                                                          */
+/* Запросы к API хостинга (тот же домен — CORS не нужен)               */
 /* ------------------------------------------------------------------ */
-async function gh(path, { method = "GET", body } = {}) {
-  const headers = { Accept: "application/vnd.github+json" };
-  if (cfg.token) headers.Authorization = "Bearer " + cfg.token;
-  const res = await fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
-    method, headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (!res.ok) {
-    let msg = res.status + " " + res.statusText;
-    try { const j = await res.json(); if (j.message) msg = j.message; } catch {}
-    throw new Error("GitHub: " + msg);
-  }
-  return res.status === 204 ? null : res.json();
+function apiToken() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem("darles_admin_session") || "null");
+    return s && typeof s.hash === "string" ? s.hash : null;
+  } catch { return null; }
 }
 
-async function checkConnection(silent = true) {
-  const b = $("ghStatus");
-  if (!cfg.token) {
-    ghOK = ghPush = false;
+async function apiPost(url, data, form) {
+  const t = apiToken();
+  if (!t) throw new Error("Сессия админ-панели истекла — войдите заново");
+  let body, headers = {};
+  if (form) {
+    body = form;
+    body.append("token", t);
+  } else {
+    body = JSON.stringify(Object.assign({ token: t }, data));
+    headers["Content-Type"] = "application/json";
+  }
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers, body });
+  } catch (e) {
+    throw new Error("сервер не ответил — проверьте, что сайт открыт по адресу хостинга");
+  }
+  let j = null;
+  try { j = await res.json(); } catch {}
+  if (!res.ok || !j || j.ok === false) {
+    throw new Error((j && (j.error || j.message)) || ("HTTP " + res.status));
+  }
+  return j;
+}
+
+/* Проверка: PHP хостинга на месте? */
+async function checkServer() {
+  const b = $("srvStatus");
+  try {
+    const r = await fetch("api/ping.php", { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error("ping не ok");
+    serverMode = true;
+    b.className = "badge badge--green";
+    b.textContent = "Хостинг подключён — изменения сохраняются на сервере";
+    $("tblNote").textContent = "Все правки (каталог, фото, наличие, ИИ) сохраняются в файлы хостинга и сразу видны на сайте.";
+  } catch (e) {
+    serverMode = false;
     b.className = "badge badge--gray";
-    b.textContent = "Локальный режим — публикация скачиванием файлов";
-    $("tblNote").textContent = "GitHub не подключён: добавление через «Скачать файлы», изменение/удаление — через редактирование js/products.js.";
-    return;
+    b.textContent = "Статический режим — сайт открыт не с PHP-хостинга";
+    $("tblNote").textContent =
+      "В этом режиме правки НЕ сохраняются на сайт. Заполните растение и нажмите «Скачать каталог (JSON)», " +
+      "либо откройте панель по адресу сайта на хостинге (нужна загруженная папка api/).";
   }
+  renderAiSettings();
+}
+
+/* Сохранить каталог целиком на сервере */
+async function saveCatalog(message) {
+  $("publog").style.display = "block";
+  logLine("", "Сохраняю на сервере: " + message + "…");
   try {
-    const r = await gh("");
-    ghOK = true; ghPush = !!r.permissions?.push;
-    b.className = "badge badge--" + (ghPush ? "green" : "red");
-    b.textContent = ghPush
-      ? `Подключено: ${cfg.repo} (${cfg.branch}) — публикация в один клик`
-      : "Токен без права записи — только локальный режим";
-    $("tblNote").textContent = ghPush ? "" : "Выдайте токену право Contents: Read and write.";
+    const j = await apiPost("api/catalog.php", { products: PRODUCTS });
+    logLine("ok", "Сохранено на сервере (" + j.count + " растений) — изменения уже на сайте.");
+    return true;
   } catch (e) {
-    ghOK = ghPush = false;
-    b.className = "badge badge--red";
-    b.textContent = "GitHub не отвечает: " + e.message;
-  }
-  if (!silent) renderTable();
-}
-
-async function ghGetFile(path) {
-  const r = await gh(`contents/${path}?ref=${cfg.branch}&t=${Date.now()}`);
-  const text = new TextDecoder().decode(Utf8BytesFromB64(r.content));
-  return { text, sha: r.sha };
-}
-function Utf8BytesFromB64(b64) {
-  const bin = atob(b64.replace(/\n/g, ""));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-async function ghPutFile(path, contentB64, message, sha) {
-  return gh(`contents/${path}`, {
-    method: "PUT",
-    body: { message, branch: cfg.branch, content: contentB64, ...(sha ? { sha } : {}) }
-  });
-}
-async function ghDeleteFile(path, sha, message) {
-  return gh(`contents/${path}`, { method: "DELETE", body: { message, branch: cfg.branch, sha } });
-}
-
-/* ------------------------------------------------------------------ */
-/* Разбор и сборка js/products.js                                      */
-/* ------------------------------------------------------------------ */
-function parseProductsJS(text) {
-  const m = text.match(/const\s+PRODUCTS\s*=\s*\[([\s\S]*?)\n\];/);
-  if (!m) throw new Error("Не удалось найти список PRODUCTS в файле");
-  try {
-    return new Function("return [" + m[1] + "]")();
-  } catch (e) {
-    throw new Error("Файл products.js не разобрался: " + e.message);
+    logLine("err", "Ошибка сохранения: " + e.message);
+    return false;
   }
 }
 
-const FILE_HEADER = `/* =====================================================================
-   КАТАЛОГ ТОВАРОВ ПИТОМНИКА «ДарЛес»
-   ---------------------------------------------------------------------
-   Проще всего менять этот файл через АДМИН-ПАНЕЛЬ: откройте admin.html —
-   там фото добавляется перетаскиванием, а поля заполляются как форма.
-
-   Каждое растение — блок { ... } в списке PRODUCTS, между блоками запятая.
-     id  — уникальный номер (у нового: +1 к последнему)
-     category — одно из: "hvoynye" | "listvennye" | "mnogoletnie"
-     price — цена числом, без пробелов и ₽
-     available — true/false: есть ли растение в продаже (false = «Нет в наличии»)
-     image — путь к фото, например "images/catalog/23.jpg"
-     gallery — доп. фото: ["images/catalog/23-1.jpg"] или []
-     short — короткая подпись в карточке
-     description — абзацы разделяются пустой строкой
-   ===================================================================== */`;
-
-function productToJS(p) {
-  const q = s => JSON.stringify(s ?? "");
-  const desc = String(p.description || "")
-    .replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
-  return `  {
-    id: ${Number(p.id)},
-    name: ${q(p.name)},
-    category: ${q(p.category)},
-    price: ${Number(p.price)},
-    available: ${p.available === false ? "false" : "true"},
-    image: ${q(p.image)},
-    gallery: ${JSON.stringify(p.gallery || [])},
-    short: ${q(p.short || "")},
-    description: \`${desc}\`
-  }`;
+/* Загрузить фото (dataURL) на сервер, вернуть путь */
+async function uploadPhoto(dataURL, filename) {
+  const blob = await (await fetch(dataURL)).blob();
+  const fd = new FormData();
+  fd.append("file", blob, filename);
+  const j = await apiPost("api/upload.php", null, fd);
+  return j.path;
 }
 
-function productsToJS(products) {
-  return `${FILE_HEADER}
-
-const PRODUCTS = [
-${products.map(productToJS).join(",\n")}
-];
-
-/* Названия категорий — можно менять подписи, но НЕ ключи */
-const CATEGORIES = {
-  hvoynye:     { title: "Хвойные",     icon: "images/site/7.jpg" },
-  listvennye:  { title: "Лиственные",  icon: "images/site/8.jpg" },
-  mnogoletnie: { title: "Многолетние", icon: "images/site/9.jpg" }
-};
-`;
+async function deletePhotoFile(path) {
+  if (!path || !path.startsWith("images/catalog/")) return;
+  try { await apiPost("api/upload.php", { action: "delete", path }); }
+  catch (e) { /* не критично: файл остался, на сайт не влияет */ }
 }
 
 /* ------------------------------------------------------------------ */
@@ -408,7 +359,8 @@ function currentRecogProduct() {
 function publicImageUrl(path) {
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
-  return "https://samagon90.github.io/lera-project/" + String(path).replace(/^\.?\//, "");
+  if (location.protocol === "file:") return "";
+  return location.origin + "/" + String(path).replace(/^\.?\//, "");
 }
 function openSearch(engine, query) {
   const q = encodeURIComponent(query);
@@ -429,7 +381,7 @@ function searchPhoto(engine) {
   const p = currentRecogProduct();
   const img = publicImageUrl(p?.image);
   if (!img) {
-    logLine("", "Поиск по фото возможен после публикации фото (нужна публичная ссылка). Открываю поиск по названию.");
+    logLine("", "Поиск по фото нужен, чтобы фото было доступно по ссылке (сайт на хостинге). Открываю поиск по названию.");
     searchSelectedProduct(engine === "lens" ? "google" : "yandex");
     return;
   }
@@ -504,9 +456,6 @@ function resetForm() {
   renderThumbs(); renderPreview();
 }
 
-/* ------------------------------------------------------------------ */
-/* Таблица растений + черновики                                        */
-/* ------------------------------------------------------------------ */
 /* ------------------------------------------------------------------ */
 /* Таблица каталога: фото, название, категория, цена, наличие, действия  */
 /* ------------------------------------------------------------------ */
@@ -651,9 +600,10 @@ function bindTable() {
 async function updateField(id, patch, label) {
   const p = PRODUCTS.find(x => x.id === id);
   if (!p) return;
-  const ok = await patchOnGitHub(id, patch, `[admin] ${p.name} — ${label}`);
-  if (ok) Object.assign(p, patch);
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
+  Object.assign(p, patch);          // сначала — локально (таблица обновляется сразу)
   renderTable();
+  await saveCatalog(`${p.name} — ${label}`);
 }
 
 async function toggleAvailable(id, value) {
@@ -668,52 +618,11 @@ async function setAllAvailable(value) {
       ? "Включить наличие у ВСЕХ растений каталога?"
       : "Выключить наличие у ВСЕХ растений каталога (на сайте появится «Нет в наличии»)?"))
     return;
-  if (!ghPush) {
-    alert("GitHub не подключён — изменить каталог нельзя.\n\n" +
-      "Откройте «Настройки публикации» и вставьте токен с правом Contents: Read and write.");
-    return;
-  }
-  $("publog").style.display = "block";
-  try {
-    logLine("", "Читаю js/products.js с GitHub…");
-    const { text, sha } = await ghGetFile("js/products.js");
-    const products = parseProductsJS(text);
-    products.forEach(x => { x.available = !!value; });
-    await ghPutFile("js/products.js", utf8b64(productsToJS(products)),
-      `[admin] Наличие: ${value ? "включили всем" : "выключили всем"}`, sha);
-    PRODUCTS.forEach(x => { x.available = !!value; });
-    renderTable();
-    logLine("ok", value ? "Всем растениям включено наличие." : "Все растения сняты с наличия.");
-    logLine("", "Изменится на сайте через 1–2 минуты.");
-  } catch (e) {
-    logLine("err", "Ошибка: " + e.message);
-    renderTable();
-  }
-}
-
-/* Одна и та же операция: прочитать products.js → изменить → записать */
-async function patchOnGitHub(id, patch, message) {
-  if (!ghPush) {
-    alert("GitHub не подключён — изменить товар на сайте нельзя.\n\n" +
-      "Откройте «Настройки публикации», вставьте токен с правом Contents: Read and write — " +
-      "и правки из таблицы будут уходить на сайт сами.");
-    return false;
-  }
-  $("publog").style.display = "block";
-  try {
-    logLine("", "Сохраняю: " + message.replace("[admin] ", "") + "…");
-    const { text, sha } = await ghGetFile("js/products.js");
-    const products = parseProductsJS(text);
-    const target = products.find(x => x.id === id);
-    if (!target) throw new Error("растение не найдено в файле products.js");
-    Object.assign(target, patch);
-    await ghPutFile("js/products.js", utf8b64(productsToJS(products)), message, sha);
-    logLine("ok", "Готово — на сайте появится через 1–2 минуты.");
-    return true;
-  } catch (e) {
-    logLine("err", "Ошибка: " + e.message);
-    return false;
-  }
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
+  PRODUCTS.forEach(x => { x.available = !!value; });
+  renderTable();
+  const ok = await saveCatalog(value ? "наличие включено всем" : "наличие выключено всем");
+  if (ok) logLine("ok", value ? "Всем растениям включено наличие." : "Все растения сняты с наличия.");
 }
 
 /* ------------------------------------------------------------------ */
@@ -726,9 +635,10 @@ function aiReady() { return typeof AdminAI !== "undefined" && AdminAI.isReady();
 function renderAiHint() {
   const el = $("aiHint");
   if (!el) return;
+  if (typeof AdminAI === "undefined") { el.textContent = ""; return; }
   el.textContent = aiReady()
     ? `ИИ: ${AdminAI.providerLabel()} · ${AdminAI.model()}`
-    : "ИИ не настроен — нажмите «Настроить ИИ»";
+    : (serverMode ? "ИИ не настроен — нажмите «Настроить ИИ»" : "ИИ доступен при работе с хостингом");
 }
 
 function openAiSettings() {
@@ -843,7 +753,7 @@ async function aiForProduct(id) {
   }
 }
 
-/* Настройки ИИ в блоке «Настройки публикации» */
+/* Настройки ИИ в блоке «Настройки» */
 function renderAiSettings() {
   if (typeof AdminAI === "undefined") return;
   const c = AdminAI.get();
@@ -851,6 +761,7 @@ function renderAiSettings() {
   $("aiModel").value = c.model || "";
   $("aiModel").placeholder = AdminAI.DEFAULT_MODEL[c.provider] || "модель";
   $("aiKey").value = c.key || "";
+  if ($("aiBase")) $("aiBase").value = c.base || "";
   $("aiModelList").innerHTML = AdminAI.models().map(m => `<option value="${m}"></option>`).join("");
   renderAiStatus();
 }
@@ -858,9 +769,11 @@ function renderAiSettings() {
 function renderAiStatus() {
   const note = $("aiTestNote");
   if (note) {
-    note.textContent = aiReady()
-      ? `Подключено: ${AdminAI.providerLabel()} · модель ${AdminAI.model()}`
-      : "ИИ не подключён: укажите модель и ключ.";
+    note.textContent = !serverMode
+      ? "Настройки ИИ доступны при работе с хостингом."
+      : (aiReady()
+        ? `Подключено: ${AdminAI.providerLabel()} · модель ${AdminAI.model()} (ключ хранится на сервере)`
+        : "ИИ не подключён: укажите модель и ключ.");
   }
   renderAiHint();
 }
@@ -920,88 +833,66 @@ function loadDraftToForm(i) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Публикация через GitHub                                             */
+/* Публикация: фото на сервер → каталог на сервер → сайт обновлён      */
 /* ------------------------------------------------------------------ */
 async function publish() {
   const f = collectForm();
   const errs = validate(f, editingId == null);
   if (errs.length) { alert("Проверьте форму: " + errs.join("; ") + "."); return; }
-
-  if (!ghPush) {
-    alert("GitHub не подключён (нет токена с правом записи).\n\nИспользуйте кнопку «Скачать файлы» — она подготовит всё для загрузки в репозиторий.");
-    downloadFiles();
-    return;
-  }
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
 
   $("publog").innerHTML = ""; $("btnPublish").disabled = true;
   try {
-    // 1. актуальный products.js
-    logLine("", "Читаю js/products.js с GitHub…");
-    const { text, sha } = await ghGetFile("js/products.js");
-    let products = parseProductsJS(text);
-    let id = editingId;
-
-    if (editingId == null) {
-      id = Math.max(0, ...products.map(p => p.id)) + 1;
-    }
-
-    // 2. фото: главное (перезапись при редактировании) + галерея
+    const id = editingId ?? (Math.max(0, ...PRODUCTS.map(p => p.id)) + 1);
     const mainPath = `images/catalog/${id}.jpg`;
+    const oldEntry = editingId != null ? PRODUCTS.find(p => p.id === editingId) : null;
+
+    // 1. фото: главное (перезапись при редактировании) + галерея
+    let gallery = [];
     if (photos.length) {
-      if (editingId != null) {
-        logLine("", "Загружаю новое главное фото (замена)…");
-        let shaImg;
-        try { shaImg = (await gh(`contents/${mainPath}?ref=${cfg.branch}`)).sha; } catch { shaImg = undefined; }
-        await ghPutFile(mainPath, b64part(photos[0].dataURL), `[admin] Фото: ${f.name}`, shaImg);
-      } else {
-        logLine("", "Загружаю главное фото…");
-        await ghPutFile(mainPath, b64part(photos[0].dataURL), `[admin] Фото: ${f.name}`);
-      }
+      logLine("", "Загружаю главное фото…");
+      await uploadPhoto(photos[0].dataURL, `${id}.jpg`);
       logLine("ok", "Главное фото загружено");
-    }
-    const gallery = [];
-    for (let i = 1; i < photos.length; i++) {
-      const gPath = `images/catalog/${id}-${i}.jpg`;
-      logLine("", `Загружаю доп. фото ${i}…`);
-      await ghPutFile(gPath, b64part(photos[i].dataURL), `[admin] Доп. фото: ${f.name}`);
-      gallery.push(gPath);
-      logLine("ok", `Доп. фото ${i} загружено`);
+      for (let i = 1; i < photos.length; i++) {
+        logLine("", `Загружаю доп. фото ${i}…`);
+        await uploadPhoto(photos[i].dataURL, `${id}-${i}.jpg`);
+        gallery.push(`images/catalog/${id}-${i}.jpg`);
+        logLine("ok", `Доп. фото ${i} загружено`);
+      }
+      // старые доп. фото, которые больше не используются, убираем (не критично)
+      if (oldEntry) {
+        for (const op of (oldEntry.gallery || [])) {
+          if (op && op.startsWith("images/catalog/") && !gallery.includes(op)) {
+            await deletePhotoFile(op);
+          }
+        }
+      }
     }
 
-    // 3. запись в products.js
-    const oldEntry = editingId != null ? products.find(p => p.id === editingId) : null;
+    // 2. запись каталога (локальная копия)
     const entry = {
       id,
       name: f.name, category: f.category, price: f.price,
       available: f.available !== false,
-      image: (editingId != null && !photos.length)
-        ? oldEntry?.image || mainPath
-        : mainPath,
-      gallery: gallery.length ? gallery : (oldEntry?.gallery || []),
+      image: (editingId != null && !photos.length) ? (oldEntry?.image || mainPath) : mainPath,
+      gallery: photos.length ? gallery : (oldEntry?.gallery || []),
       short: f.short, description: f.description
     };
     if (oldEntry) Object.assign(oldEntry, entry);
-    else products.push(entry);
-    logLine("", "Обновляю js/products.js…");
-    await ghPutFile("js/products.js", utf8b64(productsToJS(products)),
-      editingId != null ? `[admin] Изменено: ${f.name}` : `[admin] Добавлено растение: ${f.name}`, sha);
-    logLine("ok", "products.js обновлён");
+    else PRODUCTS.push(entry);
 
-    logLine("ok", editingId != null
-      ? `Готово! Изменения появятся на сайте через 1–2 минуты.`
-      : `Готово! «${f.name}» появилось на сайте (через 1–2 минуты, пока пересобирается GitHub Pages).`);
-    logLine("", `<a href="catalog.html?cat=${f.category}" target="_blank">Открыть каталог →</a>`, true);
-
-    resetForm();
-    // обновляем локальную копию для таблицы
-    try {
-      PRODUCTS.length = 0;
-      products.forEach(p => PRODUCTS.push(p));
-    } catch {}
+    // 3. сохранить каталог на сервере
+    const ok = await saveCatalog(editingId != null ? `Изменено: ${f.name}` : `Добавлено растение: ${f.name}`);
+    if (ok) {
+      logLine("ok", editingId != null
+        ? "Готово! Изменения уже видны на сайте."
+        : `Готово! «${f.name}» теперь на сайте.`);
+      logLine("", `<a href="catalog.html?cat=${f.category}" target="_blank">Открыть каталог →</a>`, true);
+      resetForm();
+    }
     renderTable();
   } catch (e) {
-    logLine("err", "Ошибка публикации: " + e.message);
-    logLine("", "Ничего не потеряно — попробуйте ещё раз или используйте «Скачать файлы».");
+    logLine("err", "Ошибка: " + e.message);
   }
   $("btnPublish").disabled = false;
 }
@@ -1012,95 +903,39 @@ async function publish() {
 async function deleteProduct(id) {
   const p = PRODUCTS.find(x => x.id === id);
   if (!p || !confirm(`Удалить «${p.name}» с сайта?`)) return;
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
 
-  if (!ghPush) {
-    alert("В локальном режиме удаление недоступно.\n\nОткройте js/products.js в репозитории и удалите блок растения (см. ШПАРГАЛКА.md).");
-    return;
-  }
   $("publog").innerHTML = "";
-  try {
-    logLine("", "Читаю js/products.js с GitHub…");
-    const { text, sha } = await ghGetFile("js/products.js");
-    const products = parseProductsJS(text);
-    const idx = products.findIndex(x => x.id === id);
-    if (idx < 0) throw new Error("растение не найдено в файле");
-    const [removed] = products.splice(idx, 1);
-    await ghPutFile("js/products.js", utf8b64(productsToJS(products)),
-      `[admin] Удалено растение: ${removed.name}`, sha);
+  const i = PRODUCTS.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const [removed] = PRODUCTS.splice(i, 1);
+  const ok = await saveCatalog(`Удалено растение: ${removed.name}`);
+  if (ok) {
     logLine("ok", `Удалено из каталога: ${removed.name}`);
-    // убрать фото (не критично, если не выйдет)
     for (const path of [removed.image, ...(removed.gallery || [])]) {
-      if (!path || !path.startsWith("images/catalog/")) continue;
-      try {
-        const f = await gh(`contents/${path}?ref=${cfg.branch}`);
-        await ghDeleteFile(path, f.sha, `[admin] Удалён файл ${path}`);
-        logLine("ok", "Удалён файл " + path);
-      } catch { logLine("", "Файл " + path + " оставлен (не критично)"); }
+      await deletePhotoFile(path); // фото с диска тоже убираем (не критично)
     }
-    const i = PRODUCTS.findIndex(x => x.id === id);
-    if (i >= 0) PRODUCTS.splice(i, 1);
     renderTable();
-  } catch (e) {
-    logLine("err", "Ошибка удаления: " + e.message);
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Локальный режим: скачать файлы                                      */
-/* ------------------------------------------------------------------ */
-function downloadDataURL(dataURL, filename) {
-  const a = document.createElement("a");
-  a.href = dataURL; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-}
-
-async function downloadFiles() {
-  const f = collectForm();
-  const errs = validate(f, editingId == null);
-  if (errs.length) { alert("Проверьте форму: " + errs.join("; ") + "."); return; }
-
-  $("publog").innerHTML = "";
-  const products = [...PRODUCTS];
-  const id = editingId ?? (Math.max(0, ...products.map(p => p.id)) + 1);
-  const oldEntry = editingId != null ? products.find(p => p.id === editingId) : null;
-  const gallery = [];
-  if (photos.length > 1)
-    for (let i = 1; i < photos.length; i++) gallery.push(`images/catalog/${id}-${i}.jpg`);
-
-  if (oldEntry) {
-    Object.assign(oldEntry, {
-      name: f.name, category: f.category, price: f.price,
-      available: f.available !== false,
-      image: photos[0] ? `images/catalog/${id}.jpg` : oldEntry.image,
-      gallery: gallery.length ? gallery : (oldEntry.gallery || []),
-      short: f.short, description: f.description
-    });
   } else {
-    products.push({
-      id, name: f.name, category: f.category, price: f.price,
-      available: f.available !== false,
-      image: `images/catalog/${id}.jpg`, gallery,
-      short: f.short, description: f.description
-    });
+    PRODUCTS.splice(i, 0, removed); // откат
+    renderTable();
   }
+}
 
-  logLine("ok", "Готовлю файлы…");
-  // 1. products.js
-  const blob = new Blob([productsToJS(products)], { type: "text/javascript;charset=utf-8" });
-  downloadDataURL(await blobToDataURL(blob), "products.js");
-  logLine("ok", "Скачан products.js");
-
-  // 2. фото
-  if (photos[0]) {
-    downloadDataURL(photos[0].dataURL, `${id}.jpg`);
-    logLine("ok", `Скачано фото ${id}.jpg`);
-  }
-  for (let i = 1; i < photos.length; i++) {
-    downloadDataURL(photos[i].dataURL, `${id}-${i}.jpg`);
-    logLine("ok", `Скачано фото ${id}-${i}.jpg`);
-  }
-
-  logLine("", "Дальше: github.com → репозиторий → Add file → Upload files → перетащите скачанные файлы (фото — в папку images/catalog, products.js — в папку js) → Commit changes.");
+/* ------------------------------------------------------------------ */
+/* Резервная копия каталога (JSON)                                     */
+/* ------------------------------------------------------------------ */
+function downloadBackup() {
+  const payload = { exportedAt: new Date().toISOString(), products: PRODUCTS };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "darles-catalog.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  logLine("ok", "Скачан darles-catalog.json — копия каталога (запасной способ перенести данные).");
 }
 
 /* ------------------------------------------------------------------ */
@@ -1120,53 +955,75 @@ function saveDraft() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Смена пароля админ-панели                                           */
+/* Смена пароля админ-панели (хранится в js/admin-auth.js на сервере)  */
 /* ------------------------------------------------------------------ */
 async function changeAdminPassword() {
-  if (!ghPush) {
-    alert("Смена пароля требует подключённый GitHub с правом записи.\n\nОткройте «Настройки публикации», введите fine-grained токен (Contents: Read and write) и нажмите «Сохранить и проверить».");
-    return;
-  }
-  if (typeof ADMIN_AUTH?.hashPassword !== "function") {
-    alert("Не удалось загрузить утилиту смены пароля. Обновите страницу: Ctrl+F5.");
-    return;
-  }
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
   const p1 = prompt("Введите новый пароль (минимум 4 символа):");
   if (!p1 || p1.length < 4) { alert("Пароль должен содержать минимум 4 символа."); return; }
   const p2 = prompt("Повторите новый пароль:");
   if (p1 !== p2) { alert("Пароли не совпадают — попробуйте ещё раз."); return; }
 
-  const btn = $("btnChangePass");
-  if (btn) btn.disabled = true;
-  $("publog").innerHTML = "";
-  logLine("", "Считаю актуальные файлы админки…");
   try {
-    const [authRes, htmlRes] = await Promise.all([
-      ghGetFile("js/admin-auth.js"),
-      ghGetFile("admin.html")
-    ]);
-    const oldHash = (authRes.text.match(/const HASH = "([0-9a-f]{64})"/) || [])[1];
-    if (!oldHash) throw new Error("в js/admin-auth.js не найден HASH");
-
-    const newHash = await ADMIN_AUTH.hashPassword(p1);
-    const oldVer = (htmlRes.text.match(/admin-auth\.js\?v=(\d+)/) || [])[1] || "3";
-    const newVer = String(Number(oldVer) + 1);
-
-    let auth = authRes.text
-      .replace(oldHash, newHash)
-      .replace(/const SESSION_VERSION = \d+;/, `const SESSION_VERSION = ${newVer};`);
-    let html = htmlRes.text
-      .split("?v=" + oldVer).join("?v=" + newVer)
-      .replace(new RegExp("if \\(s && s\\.v !== " + oldVer + "\\)", "g"), `if (s && s.v !== ${newVer})`);
-
-    logLine("", `Загружаю на GitHub файлы версии ${newVer}…`);
-    await ghPutFile("js/admin-auth.js", utf8b64(auth), "[admin] Смена пароля админ-панели", authRes.sha);
-    await ghPutFile("admin.html", utf8b64(html), `[admin] Смена пароля админ-панели (версия ${newVer})`, htmlRes.sha);
-    logLine("ok", "Пароль изменён на GitHub. Выйдите из панели и войдите с новым паролем.");
+    await apiPost("api/config.php", { change_password: p1 });
+    alert("Пароль изменён. Войдите заново с новым паролем.");
+    location.reload();
   } catch (e) {
-    logLine("err", "Ошибка смены пароля: " + e.message);
-  } finally {
-    if (btn) btn.disabled = false;
+    alert("Не удалось сменить пароль: " + e.message);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Настройки ИИ: сохранение на сервере + проверка                      */
+/* ------------------------------------------------------------------ */
+async function loadAiSettingsFromServer() {
+  if (!serverMode) return;
+  try {
+    const t = apiToken();
+    if (!t) return;
+    // токен в URL: на всех хостингах работает (заголовки иногда режутся)
+    const res = await fetch("api/config.php?token=" + encodeURIComponent(t), { cache: "no-store" });
+    const j = await res.json();
+    if (res.ok && j && j.ai && typeof AdminAI !== "undefined") {
+      AdminAI.applyServer(j.ai);
+    }
+  } catch (e) { /* без настроек — ИИ просто «не настроен» */ }
+}
+
+async function saveAiSettings() {
+  if (typeof AdminAI === "undefined") return;
+  const provider = $("aiProvider").value;
+  const model = $("aiModel").value.trim();
+  const key = $("aiKey").value.trim();
+  const base = $("aiBase") ? $("aiBase").value.trim() : "";
+  AdminAI.applyServer({ provider, model, key, base });
+  renderAiSettings();
+  if (!key) { alert("Укажите модель и ключ."); return; }
+  if (!serverMode) { alert(NO_SERVER_MSG); return; }
+
+  const note = $("aiTestNote");
+  note.textContent = "Сохраняю на сервере…";
+  try {
+    await apiPost("api/config.php", { ai: { provider, model, key, base } });
+    note.textContent = "Проверяю ключ…";
+    await AdminAI.test();
+    note.textContent = "✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model() + " (хранится на сервере)";
+  } catch (e) {
+    note.textContent = "✗ " + e.message;
+  }
+  renderAiHint();
+}
+
+async function forgetAiKey() {
+  if (typeof AdminAI === "undefined") return;
+  const c = AdminAI.get();
+  if (!serverMode) { AdminAI.applyServer({ ...c, key: "" }); renderAiSettings(); return; }
+  try {
+    await apiPost("api/config.php", { ai: { provider: c.provider, model: c.model, key: "", base: c.base || "" } });
+    AdminAI.applyServer({ provider: c.provider, model: c.model, key: "", base: c.base || "" });
+    renderAiSettings();
+  } catch (e) {
+    alert("Не удалось убрать ключ: " + e.message);
   }
 }
 
@@ -1177,21 +1034,9 @@ $("btnSettings").addEventListener("click", () => {
   const s = $("settings");
   s.style.display = s.style.display === "none" ? "block" : "none";
 });
-$("btnSaveCfg").addEventListener("click", async () => {
-  cfg.repo = $("cfgRepo").value.trim() || cfg.repo;
-  cfg.branch = $("cfgBranch").value.trim() || "main";
-  cfg.token = $("cfgToken").value.trim();
-  saveCfg();
-  await checkConnection(false);
-});
-$("btnForget").addEventListener("click", async () => {
-  cfg.token = ""; saveCfg();
-  $("cfgToken").value = "";
-  await checkConnection(false);
-});
 $("btnPublish").addEventListener("click", publish);
 $("btnSaveDraft").addEventListener("click", saveDraft);
-$("btnDownload").addEventListener("click", downloadFiles);
+$("btnDownload").addEventListener("click", downloadBackup);
 $("btnReset").addEventListener("click", resetForm);
 $("btnChangePass").addEventListener("click", changeAdminPassword);
 
@@ -1201,15 +1046,6 @@ $("idMatch").addEventListener("change", e => {
   if (v === "-1") return;
   const c = recogCandidates[+v];
   if (c) { recogPrev = collectForm(); applyOfflineProduct(c.product); }
-});
-$("cfgTokenEye").addEventListener("click", e => {
-  e.preventDefault();
-  const inp = $("cfgToken");
-  const show = inp.type === "password";
-  inp.type = show ? "text" : "password";
-  $("cfgTokenEye").textContent = show ? "🙈" : "👁";
-  $("cfgTokenEye").setAttribute("aria-label", show ? "Скрыть токен" : "Показать токен");
-  inp.focus();
 });
 $("btnSearchG").addEventListener("click", () => searchSelectedProduct("google"));
 $("btnSearchY").addEventListener("click", () => searchSelectedProduct("yandex"));
@@ -1226,34 +1062,15 @@ $("btnAllOut").addEventListener("click", () => setAllAvailable(false));
 /* --- ИИ-помощник --- */
 $("btnAI").addEventListener("click", aiFillForm);
 $("btnAiSettings").addEventListener("click", openAiSettings);
-$("btnAiSave").addEventListener("click", async () => {
-  AdminAI.set({
-    provider: $("aiProvider").value,
-    model: $("aiModel").value.trim(),
-    key: $("aiKey").value.trim()
-  });
-  renderAiSettings();
-  if (!AdminAI.isReady()) { alert("Укажите модель и ключ."); return; }
-  const note = $("aiTestNote");
-  note.textContent = "Проверяю ключ…";
-  try {
-    await AdminAI.test();
-    note.textContent = "✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model();
-  } catch (e) {
-    note.textContent = "✗ " + e.message;
-  }
-  renderAiHint();
-});
-$("btnAiForget").addEventListener("click", () => {
-  AdminAI.set({ key: "", model: "" });
-  renderAiSettings();
-});
+$("btnAiSave").addEventListener("click", saveAiSettings);
+$("btnAiForget").addEventListener("click", forgetAiKey);
 
 initDropzone();
-$("cfgRepo").value = cfg.repo;
-$("cfgBranch").value = cfg.branch;
-$("cfgToken").value = cfg.token;
-renderAiSettings();
 renderPreview();
 renderTable();
-checkConnection();
+checkServer().then(() => {
+  return loadAiSettingsFromServer();
+}).then(() => {
+  renderAiSettings();
+  renderTable();
+});
