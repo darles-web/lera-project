@@ -965,41 +965,49 @@ async function loadAiSettingsFromServer() {
 }
 
 async function saveAiSettings() {
-  if (typeof AdminAI === "undefined") return;
-  const provider = $("aiProvider").value;
-  const model = $("aiModel").value.trim();
-  const key = $("aiKey").value.trim();
-  const base = $("aiBase") ? $("aiBase").value.trim() : "";
-  const c = AdminAI.get();
-  // ключ в запросе передаём только если пользователь ввёл НОВЫЙ;
-  // иначе сервер оставляет сохранённый
-  const aiPatch = { provider, model, base };
-  if (key) aiPatch.key = key;
-  AdminAI.applyServer({
-    provider, model, base,
-    keySet: key ? true : c.keySet,
-    keyMask: key ? (key.slice(0, 3) + "…" + key.slice(-4)) : (c.keyMask || "")
-  });
-  renderAiSettings();
-  if (!serverMode) { alert(NO_SERVER_MSG); return; }
-
+  if (typeof AdminAI === "undefined") { alert("Скрипт ИИ не загрузился — обновите страницу (Ctrl+F5)."); return; }
+  const btn = $("btnAiSave");
   const note = $("aiTestNote");
-  note.textContent = "Сохраняю на сервере…";
+  const noteShow = t => { if (note) note.textContent = t; };
+  if (btn) { btn.disabled = true; btn.textContent = "Сохраняю…"; }
+  noteShow("Сохраняю настройки…");
   try {
+    const provider = $("aiProvider").value;
+    const model = $("aiModel").value.trim();
+    const key = $("aiKey").value.trim();
+    const base = $("aiBase") ? $("aiBase").value.trim() : "";
+    const c = AdminAI.get();
+    // ключ в запросе передаём только если пользователь ввёл НОВЫЙ;
+    // иначе сервер оставляет сохранённый
+    const aiPatch = { provider, model, base };
+    if (key) aiPatch.key = key;
+    AdminAI.applyServer({
+      provider, model, base,
+      keySet: key ? true : c.keySet,
+      keyMask: key ? (key.slice(0, 3) + "…" + key.slice(-4)) : (c.keyMask || "")
+    });
+    renderAiSettings();
+    if (!serverMode) {
+      noteShow("✗ Сайт работает без PHP-хостинга — сохранить нельзя. Проверьте, что папка api/ загружена на хостинг.");
+      alert(NO_SERVER_MSG);
+      return;
+    }
+    noteShow("Сохраняю на сервере…");
     const j = await apiPost("api/config.php", { ai: aiPatch });
     if (j && j.ai) AdminAI.applyServer(j.ai);
     if (!AdminAI.isReady()) {
-      note.textContent = "✗ Ключ не задан: вставьте новый ключ и сохраните.";
-      renderAiHint();
+      noteShow("✗ Ключ не задан: вставьте новый ключ и сохраните.");
       return;
     }
-    note.textContent = "Проверяю ключ…";
+    noteShow("Проверяю ключ…");
     await AdminAI.test();
-    note.textContent = "✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model() + " (хранится на сервере)";
+    noteShow("✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model() + " (хранится на сервере)");
   } catch (e) {
-    note.textContent = "✗ " + e.message;
+    noteShow("✗ " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Сохранить и проверить"; }
+    renderAiHint();
   }
-  renderAiHint();
 }
 
 async function forgetAiKey() {

@@ -12,10 +12,32 @@
 <meta http-equiv="Expires" content="0">
 <link rel="icon" href="images/site/6.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=8">
-<link rel="stylesheet" href="css/admin.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/admin.css?v=9">
 </head>
 <body>
+<!-- Плашка ошибок: если в панели сломался скрипт — текст ошибки виден прямо тут -->
+<div id="jsErrBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#b3261e;color:#fff;padding:10px 16px;font:14px/1.45 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25)"></div>
+<script>
+  function showJsErr(msg) {
+    try {
+      const b = document.getElementById("jsErrBanner");
+      if (b) {
+        b.textContent = "⚠️ Ошибка панели: " + msg + " — пришлите этот текст в чат Arena.";
+        b.style.display = "block";
+      }
+    } catch (e) {}
+    console.error("ПАНЕЛЬ:", msg);
+  }
+  window.addEventListener("error", function (e) {
+    const where = e.filename ? " (" + String(e.filename).split("/").pop() + (e.lineno ? ":" + e.lineno : "") + ")" : "";
+    showJsErr((e.message || "неизвестная ошибка") + where);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    const m = (e.reason && (e.reason.message || String(e.reason))) || "неизвестная ошибка";
+    showJsErr(m);
+  });
+</script>
 <script>
   function bootAdminPanel() {
     document.title = "Админ-панель — питомник «ДарЛес»";
@@ -23,14 +45,14 @@
     function loadScript(src) {
       return new Promise((res, rej) => {
         const s = document.createElement("script");
-        s.src = src + "?v=8"; s.onload = res; s.onerror = () => rej(new Error("Не удалось загрузить " + src));
+        s.src = src + "?v=9"; s.onload = res; s.onerror = () => rej(new Error("Не удалось загрузить " + src));
         document.body.appendChild(s);
       });
     }
 
     (async () => {
       try {
-        const resp = await fetch("js/panel.inc?v=8", { cache: "no-store" });
+        const resp = await fetch("js/panel.inc?v=9", { cache: "no-store" });
         if (!resp.ok) throw new Error("Не удалось загрузить панель");
         document.body.innerHTML = await resp.text();
 
