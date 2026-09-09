@@ -3,8 +3,12 @@
    API «ДарЛес» — фото каталога (images/catalog/)
    ---------------------------------------------------------------------
    POST multipart/form-data:  файл «file» + имя «name» (например 23.jpg)
-                              + токен админ-панели
-   POST JSON:  { token, action: "delete", path: "images/catalog/23.jpg" }
+   POST JSON:  { action: "delete", path: "images/catalog/23.jpg" }
+
+   Доступ открыт (панель без пароля) — поэтому:
+     • имя файла строго по шаблону (цифры + .jpg/.png/.webp)
+     • фото не больше 8 МБ
+     • скоростной фильтр: 120 запросов в час с IP
    ===================================================================== */
 
 require __DIR__ . "/common.php";
@@ -17,11 +21,7 @@ $ctype = isset($_SERVER["CONTENT_TYPE"]) ? $_SERVER["CONTENT_TYPE"] : "";
 
 /* ---------- загрузка фото (multipart) ---------- */
 if (stripos($ctype, "multipart/form-data") === 0) {
-  $token = isset($_POST["token"]) ? strtolower(trim($_POST["token"])) : "";
-  $hash  = dl_admin_hash();
-  if (!$hash || !hash_equals($hash, $token)) {
-    dl_http_error("Нет доступа: токен админ-панели не подходит", 403);
-  }
+  dl_rate_limit("upload", 120);
 
   $name = isset($_POST["name"]) ? trim($_POST["name"]) : "";
   if (!preg_match('/^\d{1,4}(?:-\d{1,2})?\.(jpe?g|png|webp)$/i', $name)) {
@@ -60,8 +60,9 @@ if (stripos($ctype, "multipart/form-data") === 0) {
 }
 
 /* ---------- удаление фото (JSON) ---------- */
-$body = dl_require_auth();
-if (isset($body["action"]) && $body["action"] === "delete") {
+dl_rate_limit("upload", 120);
+$body = dl_read_json_body();
+if (is_array($body) && isset($body["action"]) && $body["action"] === "delete") {
   $path = isset($body["path"]) ? (string) $body["path"] : "";
   if (!preg_match('#^images/catalog/[\w.\-]+$#', $path)) {
     dl_http_error("Недопустимый путь к файлу", 400);

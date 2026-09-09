@@ -8,10 +8,11 @@
      • Каталог растений  → data/catalog.json          (пишет api/catalog.php)
      • Фото каталога     → images/catalog/*.jpg       (пишет api/upload.php)
      • Ключ ИИ и настройки → api/config.local.php     (пишет api/config.php)
-     • Пароль админки    → js/admin-auth.js (константа HASH)
 
-   Защита: все «пишущие» запросы требуют токен — SHA-256 хеш пароля
-   админ-панели (тот же, что в js/admin-auth.js).
+   ВАЖНО: с 09.09.2026 админ-панель БЕЗ пароля (решение владельца) —
+   доступ к api/ открыт. Поэтому все «пишущие» запросы ограничены
+   скоростным фильтром (dl_rate_limit): максимум N запросов в час
+   с одного IP. Ключ ИИ наружу не отдаётся — только маска вида sk-…1234.
    ===================================================================== */
 
 error_reporting(E_ALL);
@@ -84,29 +85,36 @@ function dl_write_config(array $cfg) {
   return false;
 }
 
-/* ---------- пароль админ-панели ---------- */
-/* Единственный источник: константа HASH в js/admin-auth.js. */
-function dl_admin_hash() {
-  static $h = null;
-  if ($h !== null) return $h;
-  $js = @file_get_contents(DL_ROOT . "/js/admin-auth.js");
-  if ($js !== false && preg_match('/const HASH = "([0-9a-f]{64})"/', $js, $m)) {
-    $h = $m[1];
-    return $h;
-  }
-  $h = null;
-  return $h;
-}
+/* ---------- скоростной фильтр (защита открытого API) ---------- */
+/* Не более $limit запросов действия $action в час с одного IP.
+   Счётчики лежат в data/ratelimit.json и чистятся сами. */
+function dl_rate_limit($action, $limit) {
+  $ip   = isset($_SERVER["REMOTE_ADDR"]) ? $_SERVER["REMOTE_ADDR"] : "unknown";
+  $now  = time();
+  $file = DL_DATA . "/ratelimit.json";
 
-/* ---------- авторизация «пишущих» запросов ---------- */
-/* Возвращает тело запроса JSON, бросает HTTP-ошибку, если токен не подходит. */
-function dl_require_auth() {
-  $body = dl_read_json_body();
-  if (!is_array($body)) dl_http_error("Некорректный запрос (ожидается JSON)", 400);
-  $token = isset($body["token"]) ? strtolower(trim($body["token"])) : "";
-  $hash = dl_admin_hash();
-  if (!$hash || !hash_equals($hash, $token)) {
-    dl_http_error("Нет доступа: токен админ-панели не подходит", 403);
+  $data = array();
+  if (is_file($file)) {
+    $raw = @file_get_contents($file);
+    $d   = $raw === false ? null : json_decode($raw, true);
+    if (is_array($d)) $data = $d;
   }
-  return $body;
+
+  // чистим записи старше часа
+  foreach ($data as $k => $v) {
+    if (!is_array($v) || $now - (int) $v["ts"] > 3600) unset($data[$k]);
+  }
+
+  $key   = $ip . "|" . $action;
+  $count = (isset($data[$key]) && is_array($data[$key])) ? (int) $data[$key]["count"] : 0;
+
+  if ($count >= $limit) {
+    dl_http_error("Слишком много запросов. Попробуйте ещё раз через час.", 429);
+  }
+
+  $data[$key] = array("count" => $count + 1, "ts" => $now);
+  if (!is_dir(DL_DATA)) @mkdir(DL_DATA, 0755, true);
+  $tmp = $file . ".tmp";
+  @file_put_contents($tmp, json_encode($data), LOCK_EX);
+  @rename($tmp, $file);
 }

@@ -10,7 +10,7 @@
     <div class="admin__status">
       <span id="srvStatus" class="badge badge--gray">Проверяю хостинг…</span>
       <button class="btn btn--ghost btn--sm" id="btnSettings" type="button">Настройки</button>
-      <button class="btn btn--ghost btn--sm" id="btnLogout" type="button" title="Выйти из админ-панели">Выйти</button>
+      <button class="btn btn--ghost btn--sm" id="btnLogout" type="button" title="Вернуться на сайт">На сайт</button>
     </div>
   </div>
 </section>
@@ -23,13 +23,12 @@
       (каталог, фото, ключ ИИ) панель сохраняет напрямую в файлы хостинга:
       <b>data/catalog.json</b>, <b>images/catalog/</b>, <b>api/config.local.php</b>.</p>
 
-    <hr style="margin:26px 0 18px;border:0;border-top:1px solid #e3e9e5">
-    <h4>Пароль админ-панели</h4>
-    <p class="muted small">Смена выполняется прямо на сервере (обновляется файл js/admin-auth.js).
-      Вход после смены — уже с новым паролем.</p>
-    <div class="btn-row">
-      <button class="btn btn--ghost btn--sm" id="btnChangePass" type="button">Сменить пароль</button>
-    </div>
+    <p style="background:#fff6e6;border:1px solid #f0d9a8;border-radius:12px;padding:12px 16px;margin-top:16px" class="small">
+      ⚠️ <b>Пароль на панели отключён</b> — открыть её может любой, кто знает адрес
+      <b>/admin.html</b> (включая поисковики). Любому гостю доступны правки каталога
+      и настройки ИИ. Если это нежелательно — включите пароль обратно (обратитесь
+      к разработчику в чате Arena).
+    </p>
 
     <hr style="margin:26px 0 18px;border:0;border-top:1px solid #e3e9e5">
     <h4>ИИ-помощник (распознавание растений по фото)</h4>
@@ -49,15 +48,16 @@
         <datalist id="aiModelList"></datalist>
       </label>
     </div>
-    <label>Ключ API
+    <label>Ключ API <span class="muted">— сохранённый показывается маской, новый вводится сюда</span>
       <input id="aiKey" type="password" placeholder="sk-… / AIza… / sk-ant-…" autocomplete="off">
     </label>
     <label>Свой адрес API (прокси) <span class="muted">— только если сервер хостинга сам не может открыть api.openai.com</span>
       <input id="aiBase" type="text" placeholder="например https://my-proxy.example.com — можно оставить пустым" autocomplete="off">
     </label>
     <p class="muted small">Ключ сохраняется на сервере (в api/config.local.php) и не передаётся никому,
-      кроме сервера провайдера. Модель смотрит картинку, поэтому провайдер берёт за запрос
-      небольшую плату (обычно доли цента).
+      кроме сервера провайдера; в настройках показывается только маска (sk-…1234).
+      Модель смотрит картинку, поэтому провайдер берёт за запрос небольшую плату (обычно доли цента);
+      на панель стоит ограничение 30 запросов ИИ в час.
       Ключи: OpenAI — platform.openai.com/api-keys, Gemini — aistudio.google.com/apikey,
       Claude — console.anthropic.com/settings/keys.</p>
     <div class="btn-row">

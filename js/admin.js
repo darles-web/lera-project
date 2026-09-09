@@ -60,22 +60,14 @@ function logLine(cls, text, html = false) {
 /* ------------------------------------------------------------------ */
 /* Запросы к API хостинга (тот же домен — CORS не нужен)               */
 /* ------------------------------------------------------------------ */
-function apiToken() {
-  try {
-    const s = JSON.parse(sessionStorage.getItem("darles_admin_session") || "null");
-    return s && typeof s.hash === "string" ? s.hash : null;
-  } catch { return null; }
-}
-
+/* Вход по паролю отключён: запросы идут без токена,
+   на сервере стоит скоростной фильтр (лимит запросов в час). */
 async function apiPost(url, data, form) {
-  const t = apiToken();
-  if (!t) throw new Error("Сессия админ-панели истекла — войдите заново");
   let body, headers = {};
   if (form) {
     body = form;
-    body.append("token", t);
   } else {
-    body = JSON.stringify(Object.assign({ token: t }, data));
+    body = JSON.stringify(data || {});
     headers["Content-Type"] = "application/json";
   }
   let res;
@@ -760,7 +752,11 @@ function renderAiSettings() {
   $("aiProvider").value = c.provider;
   $("aiModel").value = c.model || "";
   $("aiModel").placeholder = AdminAI.DEFAULT_MODEL[c.provider] || "модель";
-  $("aiKey").value = c.key || "";
+  // сам ключ сервер не отдаёт — показываем только маску
+  $("aiKey").value = "";
+  $("aiKey").placeholder = c.keyMask
+    ? `ключ сохранён на сервере (${c.keyMask}) — введите новый, чтобы заменить`
+    : "sk-… / AIza… / sk-ant-…";
   if ($("aiBase")) $("aiBase").value = c.base || "";
   $("aiModelList").innerHTML = AdminAI.models().map(m => `<option value="${m}"></option>`).join("");
   renderAiStatus();
@@ -955,34 +951,12 @@ function saveDraft() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Смена пароля админ-панели (хранится в js/admin-auth.js на сервере)  */
-/* ------------------------------------------------------------------ */
-async function changeAdminPassword() {
-  if (!serverMode) { alert(NO_SERVER_MSG); return; }
-  const p1 = prompt("Введите новый пароль (минимум 4 символа):");
-  if (!p1 || p1.length < 4) { alert("Пароль должен содержать минимум 4 символа."); return; }
-  const p2 = prompt("Повторите новый пароль:");
-  if (p1 !== p2) { alert("Пароли не совпадают — попробуйте ещё раз."); return; }
-
-  try {
-    await apiPost("api/config.php", { change_password: p1 });
-    alert("Пароль изменён. Войдите заново с новым паролем.");
-    location.reload();
-  } catch (e) {
-    alert("Не удалось сменить пароль: " + e.message);
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /* Настройки ИИ: сохранение на сервере + проверка                      */
 /* ------------------------------------------------------------------ */
 async function loadAiSettingsFromServer() {
   if (!serverMode) return;
   try {
-    const t = apiToken();
-    if (!t) return;
-    // токен в URL: на всех хостингах работает (заголовки иногда режутся)
-    const res = await fetch("api/config.php?token=" + encodeURIComponent(t), { cache: "no-store" });
+    const res = await fetch("api/config.php", { cache: "no-store" });
     const j = await res.json();
     if (res.ok && j && j.ai && typeof AdminAI !== "undefined") {
       AdminAI.applyServer(j.ai);
@@ -996,15 +970,29 @@ async function saveAiSettings() {
   const model = $("aiModel").value.trim();
   const key = $("aiKey").value.trim();
   const base = $("aiBase") ? $("aiBase").value.trim() : "";
-  AdminAI.applyServer({ provider, model, key, base });
+  const c = AdminAI.get();
+  // ключ в запросе передаём только если пользователь ввёл НОВЫЙ;
+  // иначе сервер оставляет сохранённый
+  const aiPatch = { provider, model, base };
+  if (key) aiPatch.key = key;
+  AdminAI.applyServer({
+    provider, model, base,
+    keySet: key ? true : c.keySet,
+    keyMask: key ? (key.slice(0, 3) + "…" + key.slice(-4)) : (c.keyMask || "")
+  });
   renderAiSettings();
-  if (!key) { alert("Укажите модель и ключ."); return; }
   if (!serverMode) { alert(NO_SERVER_MSG); return; }
 
   const note = $("aiTestNote");
   note.textContent = "Сохраняю на сервере…";
   try {
-    await apiPost("api/config.php", { ai: { provider, model, key, base } });
+    const j = await apiPost("api/config.php", { ai: aiPatch });
+    if (j && j.ai) AdminAI.applyServer(j.ai);
+    if (!AdminAI.isReady()) {
+      note.textContent = "✗ Ключ не задан: вставьте новый ключ и сохраните.";
+      renderAiHint();
+      return;
+    }
     note.textContent = "Проверяю ключ…";
     await AdminAI.test();
     note.textContent = "✓ Ключ работает: " + AdminAI.providerLabel() + " · " + AdminAI.model() + " (хранится на сервере)";
@@ -1016,11 +1004,15 @@ async function saveAiSettings() {
 
 async function forgetAiKey() {
   if (typeof AdminAI === "undefined") return;
-  const c = AdminAI.get();
-  if (!serverMode) { AdminAI.applyServer({ ...c, key: "" }); renderAiSettings(); return; }
+  if (!serverMode) {
+    AdminAI.applyServer({ ...AdminAI.get(), keySet: false, keyMask: "" });
+    renderAiSettings();
+    return;
+  }
+  if (!confirm("Убрать ключ ИИ с сервера? ИИ-помощник перестанет работать, пока вы не зададите новый ключ.")) return;
   try {
-    await apiPost("api/config.php", { ai: { provider: c.provider, model: c.model, key: "", base: c.base || "" } });
-    AdminAI.applyServer({ provider: c.provider, model: c.model, key: "", base: c.base || "" });
+    const j = await apiPost("api/config.php", { ai: { clear_key: true } });
+    if (j && j.ai) AdminAI.applyServer(j.ai);
     renderAiSettings();
   } catch (e) {
     alert("Не удалось убрать ключ: " + e.message);
@@ -1038,7 +1030,6 @@ $("btnPublish").addEventListener("click", publish);
 $("btnSaveDraft").addEventListener("click", saveDraft);
 $("btnDownload").addEventListener("click", downloadBackup);
 $("btnReset").addEventListener("click", resetForm);
-$("btnChangePass").addEventListener("click", changeAdminPassword);
 
 /* --- офлайн-распознавание и поиск --- */
 $("idMatch").addEventListener("change", e => {

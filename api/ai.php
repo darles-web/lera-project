@@ -8,8 +8,8 @@
      • работает из любых стран, если сервер видит api.openai.com
        (если не видит — укажите свой адрес API/прокси в настройках)
 
-   POST JSON: { token, action: "test" }
-              { token, action: "analyze", b64, mime, system, prompt }
+   POST JSON: { action: "test" }
+              { action: "analyze", b64, mime, system, prompt }
    Ответ:     { ok: true, text: "…" }  |  { ok: false, error: "…" }
    ===================================================================== */
 
@@ -19,7 +19,13 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
   dl_http_error("Метод не поддерживается", 405);
 }
 
-$body = dl_require_auth();
+/* Доступ открыт (панель без пароля) — защищаем скоростным фильтром:
+   максимум 30 запросов в час с IP (нормы на работу с панели хватает). */
+dl_rate_limit("ai", 30);
+
+$body = dl_read_json_body();
+if (!is_array($body)) dl_http_error("Некорректный запрос (ожидается JSON)", 400);
+
 $cfg  = dl_config();
 $ai   = $cfg["ai"];
 
@@ -211,6 +217,7 @@ try {
     $system = isset($body["system"]) ? (string) $body["system"] : "";
     $prompt = isset($body["prompt"]) ? (string) $body["prompt"] : "";
     if ($b64 === "" || $prompt === "") dl_http_error("Не переданы фото или задание", 400);
+    if (strlen($b64) > 4 * 1024 * 1024) dl_http_error("Фото слишком большое", 400);
     $text = dl_ai_analyze($provider, $model, $key, $base, $b64, $mime, $system, $prompt);
     if (trim($text) === "") dl_http_error("ИИ вернул пустой ответ", 502);
     dl_json_response(array("ok" => true, "text" => $text));

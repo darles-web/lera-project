@@ -24,7 +24,9 @@ if ($method === "GET") {
 }
 
 if ($method === "POST") {
-  $body = dl_require_auth();
+  dl_rate_limit("catalog", 120);
+  $body = dl_read_json_body();
+  if (!is_array($body)) dl_http_error("Некорректный запрос (ожидается JSON)", 400);
   $products = isset($body["products"]) ? $body["products"] : null;
   if (!is_array($products) || !$products) {
     dl_http_error("Не передан список products (или он пуст)", 400);

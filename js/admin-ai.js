@@ -65,45 +65,38 @@ const AdminAI = (() => {
 • confidence — уверенность от 0 до 1. Если растение опознать нельзя, верни confidence 0 и в comment объясни почему.
 • Не указывай цену: её знает только питомник.`;
 
-  /* Настройки живёт НА СЕРВЕРЕ; сюда они приходят запросом к api/config.php. */
-  let server = { provider: "openai", model: "", key: "", base: "" };
+  /* Настройки живут НА СЕРВЕРЕ; сюда они приходят запросом к api/config.php.
+     Сам ключ сервер не отдаёт — только keySet (задан ли) и keyMask (sk-…1234). */
+  let server = { provider: "openai", model: "", base: "", keySet: false, keyMask: "" };
 
   function applyServer(ai) {
     if (!ai || typeof ai !== "object") return;
     server = {
       provider: ai.provider || "openai",
       model: String(ai.model || ""),
-      key: String(ai.key || ""),
-      base: String(ai.base || "")
+      base: String(ai.base || ""),
+      keySet: !!ai.keySet,
+      keyMask: String(ai.keyMask || "")
     };
   }
   function get() { return { ...server }; }
   function model() { return (server.model || DEFAULT_MODEL[server.provider] || "").trim(); }
   function providerLabel() { return LABELS[server.provider] || server.provider; }
   function models() { return MODELS[server.provider] || []; }
-  function isReady() { return !!server.key && !!model(); }
+  function isReady() { return server.keySet && !!model(); }
   function requirement() {
     return "ИИ не настроен: откройте «Настройки» → блок «ИИ-помощник», " +
       "выберите провайдера, модель и вставьте ключ — он сохранится на сервере.";
   }
 
   /* ---------- запрос к api/ai.php (свой домен — CORS не нужен) ---------- */
-  function token() {
-    try {
-      const s = JSON.parse(sessionStorage.getItem("darles_admin_session") || "null");
-      return s && typeof s.hash === "string" ? s.hash : null;
-    } catch { return null; }
-  }
-
   async function apiPost(data) {
-    const t = token();
-    if (!t) throw new Error("Сессия админ-панели истекла — войдите заново");
     let res;
     try {
       res = await fetch("api/ai.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(Object.assign({ token: t }, data))
+        body: JSON.stringify(data)
       });
     } catch (e) {
       throw new Error("сервер не ответил — проверьте, что сайт открыт по адресу хостинга");
