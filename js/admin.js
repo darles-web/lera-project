@@ -765,11 +765,18 @@ function renderAiSettings() {
 function renderAiStatus() {
   const note = $("aiTestNote");
   if (note) {
-    note.textContent = !serverMode
-      ? "Настройки ИИ доступны при работе с хостингом."
-      : (aiReady()
-        ? `Подключено: ${AdminAI.providerLabel()} · модель ${AdminAI.model()} (ключ хранится на сервере)`
-        : "ИИ не подключён: укажите модель и ключ.");
+    if (!serverMode) {
+      note.textContent = "Настройки ИИ доступны при работе с хостингом.";
+    } else {
+      // показываем, ЧТО именно сохранено на сервере — для диагностики
+      const c = AdminAI.get();
+      const addr = c.base ? " · адрес: " + c.base : " · адрес: api.openai.com (без прокси)";
+      const key  = c.keyMask ? " · ключ " + c.keyMask : " · ключ не задан";
+      note.textContent = (aiReady() ? "Готово" : "Не настроено")
+        + ": " + AdminAI.providerLabel()
+        + " · модель " + (AdminAI.model() || "—")
+        + key + addr;
+    }
   }
   renderAiHint();
 }

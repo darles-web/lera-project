@@ -69,10 +69,17 @@ function dl_curl($method, $url, array $headers, $payload) {
       35 => "ошибка TLS-соединения с API",
       60 => "не удалось проверить TLS-сертификат API (установите свой адрес API/прокси в настройках)",
     );
-    $why = isset($known[$errno]) ? $known[$errno] : ("curl error " . $errno . ($err ? " (" . $err . ")" : ""));
-    throw new Exception("Нет соединения с API: " . $why);
+    $why  = isset($known[$errno]) ? $known[$errno] : ("curl error " . $errno . ($err ? " (" . $err . ")" : ""));
+    throw new Exception("Нет соединения с " . dl_url_host($url) . ": " . $why);
   }
   return array($status, (string) $raw);
+}
+
+/* хост из URL — чтобы в сообщениях об ошибках было видно,
+   куда именно шёл запрос (api.openai.com / прокси / openrouter…) */
+function dl_url_host($url) {
+  $h = @parse_url($url, PHP_URL_HOST);
+  return $h ? $h : $url;
 }
 
 function dl_provider_error($raw) {
@@ -94,7 +101,7 @@ function dl_ai_test($provider, $model, $key, $base) {
     list($st, $raw) = dl_curl("POST", $url, array("Content-Type: application/json"), array(
       "contents" => array(array("parts" => array(array("text" => "Ответь одним словом: ok")))),
     ));
-    if ($st !== 200) throw new Exception(dl_provider_error($raw));
+    if ($st !== 200) throw new Exception(dl_url_host($url) . " → " . dl_provider_error($raw));
     return;
   }
   if ($provider === "anthropic") {
@@ -108,7 +115,7 @@ function dl_ai_test($provider, $model, $key, $base) {
       "max_tokens" => 16,
       "messages"   => array(array("role" => "user", "content" => "Ответь одним словом: ok")),
     ));
-    if ($st !== 200) throw new Exception(dl_provider_error($raw));
+    if ($st !== 200) throw new Exception(dl_url_host($host) . " → " . dl_provider_error($raw));
     return;
   }
   /* openai */
@@ -121,7 +128,7 @@ function dl_ai_test($provider, $model, $key, $base) {
     "max_tokens" => 16,
     "messages"   => array(array("role" => "user", "content" => "Ответь одним словом: ok")),
   ));
-  if ($st !== 200) throw new Exception(dl_provider_error($raw));
+  if ($st !== 200) throw new Exception(dl_url_host($host) . " → " . dl_provider_error($raw));
 }
 
 /* ---------- распознавание фото ---------- */
@@ -137,7 +144,7 @@ function dl_ai_analyze($provider, $model, $key, $base, $b64, $mime, $system, $pr
       "systemInstruction" => array("parts" => array(array("text" => $system))),
       "generationConfig"  => array("temperature" => 0.3),
     ));
-    if ($st !== 200) throw new Exception(dl_provider_error($raw));
+    if ($st !== 200) throw new Exception(dl_url_host($url) . " → " . dl_provider_error($raw));
     $j = json_decode($raw, true);
     $parts = isset($j["candidates"][0]["content"]["parts"]) ? $j["candidates"][0]["content"]["parts"] : array();
     $text = "";
@@ -164,7 +171,7 @@ function dl_ai_analyze($provider, $model, $key, $base, $b64, $mime, $system, $pr
         ),
       )),
     ));
-    if ($st !== 200) throw new Exception(dl_provider_error($raw));
+    if ($st !== 200) throw new Exception(dl_url_host($host) . " → " . dl_provider_error($raw));
     $j = json_decode($raw, true);
     $text = "";
     foreach ((isset($j["content"]) ? $j["content"] : array()) as $c) {
@@ -197,7 +204,7 @@ function dl_ai_analyze($provider, $model, $key, $base, $b64, $mime, $system, $pr
       list($st, $raw) = $send(false);
     }
   }
-  if ($st !== 200 && $st !== 201) throw new Exception(dl_provider_error($raw));
+  if ($st !== 200 && $st !== 201) throw new Exception(dl_url_host($host) . " → " . dl_provider_error($raw));
   $j = json_decode($raw, true);
   if (isset($j["choices"][0]["message"]["content"])) {
     return (string) $j["choices"][0]["message"]["content"];
