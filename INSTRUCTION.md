@@ -9,7 +9,7 @@
 
 Админ-панель **защищена паролем**.
 
-- **Адрес:** введите вручную в строку браузера `https://samagon90.github.io/lera-project/admin.html`
+- **Адрес:** введите вручную в строку браузера `https://darles-web.github.io/lera-project/admin.html`
   (публичной ссылки в меню нет).
 - **Пароль хранится у владельца сайта отдельно** (в целях безопасности пароль не опубликован в этом файле).
   Если вы забыли пароль — есть два способа вернуть доступ:
@@ -217,7 +217,7 @@ python3 -m http.server 3000
 
 ### Вариант В — восстановление из GitHub
 ```bash
-git clone https://github.com/samagon90/lera-project.git
+git clone https://github.com/darles-web/lera-project.git
 cd lera-project
 python3 -m http.server 3000
 ```
@@ -229,7 +229,7 @@ python3 -m http.server 3000
 3. В разделе *Build and deployment* → Source: **Deploy from a branch**.
 4. Branch: выберите нужную ветку и папку `/ (root)` → **Save**.
 5. Через 1–2 минуты сайт будет доступен по адресу
-   `https://samagon90.github.io/lera-project/`.
+   `https://darles-web.github.io/lera-project/`.
 
 ## 8. Как сохранить изменения в GitHub
 

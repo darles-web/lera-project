@@ -71,7 +71,7 @@ images/catalog/    — 10.jpg … 22.jpg — фотографии растени
 ## Локальный запуск
 
 ```bash
-git clone https://github.com/samagon90/lera-project.git
+git clone https://github.com/darles-web/lera-project.git
 cd lera-project
 python3 -m http.server 3000
 # откройте http://localhost:3000

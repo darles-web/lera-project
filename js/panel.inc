@@ -22,7 +22,7 @@
     <p class="muted">Чтобы растения появлялись на сайте «в один клик», подключите панель к репозиторию GitHub.</p>
     <div class="field-row">
       <label>Репозиторий
-        <input id="cfgRepo" type="text" value="samagon90/lera-project">
+        <input id="cfgRepo" type="text" value="darles-web/lera-project">
       </label>
       <label>Ветка
         <input id="cfgBranch" type="text" value="main">

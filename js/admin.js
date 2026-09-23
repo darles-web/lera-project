@@ -10,7 +10,7 @@ const CFG_KEY = "darles_admin_cfg";
 const DRAFTS_KEY = "darles_drafts";
 
 const cfg = Object.assign(
-  { repo: "samagon90/lera-project", branch: "main", token: "" },
+  { repo: "darles-web/lera-project", branch: "main", token: "" },
   JSON.parse(localStorage.getItem(CFG_KEY) || "{}")
 );
 
@@ -68,10 +68,21 @@ function logLine(cls, text, html = false) {
 /* ------------------------------------------------------------------ */
 /* GitHub API                                                          */
 /* ------------------------------------------------------------------ */
+// async function gh(path, { method = "GET", body } = {}) {
+//   const headers = { Accept: "application/vnd.github+json" };
+//   if (cfg.token) headers.Authorization = "Bearer " + cfg.token;
+//   const res = await fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
+//     method, headers,
+//     body: body ? JSON.stringify(body) : undefined
+//   });
 async function gh(path, { method = "GET", body } = {}) {
   const headers = { Accept: "application/vnd.github+json" };
   if (cfg.token) headers.Authorization = "Bearer " + cfg.token;
-  const res = await fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
+  // GitHub API отвечает 301-редиректом на URL без завершающего слеша,
+  // а fetch при CORS-редиректе падает с "Failed to fetch" — срезаем слеши.
+  //const url = `https://api.github.com/repos/${cfg.repo}/${path}`.replace(/\/+$/, "");
+  const url = `https://api.github.com/repos/${cfg.repo.replace(/^\/+|\/+$/g, "")}/${path}`.replace(/\/+$/, "");
+  const res = await fetch(url, {
     method, headers,
     body: body ? JSON.stringify(body) : undefined
   });
@@ -412,7 +423,7 @@ function currentRecogProduct() {
 function publicImageUrl(path) {
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
-  return "https://samagon90.github.io/lera-project/" + String(path).replace(/^\.?\//, "");
+  return "https://darles-web.github.io/lera-project/" + String(path).replace(/^\.?\//, "");
 }
 function openSearch(engine, query) {
   const q = encodeURIComponent(query);
