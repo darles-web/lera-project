@@ -767,10 +767,10 @@ const PRODUCTS = [
     price: 1350,
     stock: 100,
     available: true,
-    image: "",
+    image: "images/catalog/59.jpg",
     gallery: [],
-    short: "",
-    description: ``
+    short: "гибискус сирийский",
+    description: `тррпа`
   },
   {
     id: 60,
