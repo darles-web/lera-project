@@ -338,10 +338,10 @@ const PRODUCTS = [
     price: 850,
     stock: 300,
     available: true,
-    image: "",
+    image: "images/catalog/26.jpg",
     gallery: [],
-    short: "",
-    description: ``
+    short: "Барбарис тунберга «Ауреа»",
+    description: `Барбарис тунберга «Ауреа» - описание`
   },
   {
     id: 27,
