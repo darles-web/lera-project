@@ -293,8 +293,8 @@ const PRODUCTS = [
   },
   {
     id: 23,
-    name: "Азимина трёхлопастная (банановое дерево)",
-    category: "listvennye",
+    name: "Ель сербская «Карел»",
+    category: "hvoynye",
     size: "C7,5",
     price: 2550,
     stock: 50,
