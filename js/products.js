@@ -320,12 +320,12 @@ const PRODUCTS = [
   {
     id: 25,
     name: "Аукуба «Кротонифолия»",
-    category: "listvennye",
+    category: "mnogoletnie",
     size: "C3",
     price: 1000,
     stock: 500,
     available: true,
-    image: "",
+    image: "images/catalog/25.jpg",
     gallery: [],
     short: "",
     description: ``
