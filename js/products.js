@@ -378,19 +378,6 @@ const PRODUCTS = [
   },
   {
     id: 26,
-    name: "Барбарис тунберга «Ауреа»",
-    category: "listvennye",
-    size: "C3",
-    price: 850,
-    stock: 300,
-    available: true,
-    image: "images/catalog/26.jpg",
-    gallery: [],
-    short: "Барбарис тунберга «Ауреа»",
-    description: `Барбарис тунберга «Ауреа» - описание`
-  },
-  {
-    id: 26,
     name: "Барбарис Тунберга «Ауреа» (Aurea)",
     category: "listvennye",
     size: "C3",
